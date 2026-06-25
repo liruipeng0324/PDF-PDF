@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>双层 PDF 制作工具</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="workspace" aria-label="双层 PDF 制作工具">
+        <header class="topbar">
+          <div>
+            <h1>双层 PDF 制作工具</h1>
+            <p>选择源文件或队列目录，点击开始，自动生成带 OCR 文字层和书签的 PDF。</p>
+          </div>
+          <button class="icon-button" id="refreshTools" title="刷新状态" aria-label="刷新状态">
+            <span aria-hidden="true">刷</span>
+          </button>
+        </header>
+
+        <div class="grid">
+          <form class="panel" id="toolForm">
+            <label>
+              <span>模式</span>
+              <select id="mode" name="mode">
+                <option value="single">单个文件</option>
+                <option value="queue-dir">文件夹队列</option>
+                <option value="queue-csv">CSV 队列</option>
+              </select>
+            </label>
+
+            <label>
+              <span>输入类型</span>
+              <select id="inputType" name="inputType">
+                <option value="pdf">已导出的带书签 PDF</option>
+                <option value="word">Word 文档</option>
+              </select>
+            </label>
+
+            <div class="picker-row">
+              <label>
+                <span id="sourceLabel">带书签 PDF</span>
+                <input id="sourcePath" name="sourcePath" type="text" readonly placeholder="请选择源文件">
+              </label>
+              <button type="button" id="pickSource">选择</button>
+            </div>
+
+            <div class="picker-row">
+              <label>
+                <span id="outputLabel">输出 PDF</span>
+                <input id="outputPath" name="outputPath" type="text" readonly placeholder="请选择输出位置">
+              </label>
+              <button type="button" id="pickOutput">选择</button>
+            </div>
+
+            <label>
+              <span>OCR 语言</span>
+              <select id="language" name="language">
+                <option value="chi_sim+eng">简体中文 + 英文</option>
+                <option value="chi_tra+eng">繁体中文 + 英文</option>
+                <option value="eng">英文</option>
+                <option value="jpn+eng">日文 + 英文</option>
+                <option value="kor+eng">韩文 + 英文</option>
+              </select>
+            </label>
+
+            <label>
+              <span>图片分辨率</span>
+              <select id="dpi" name="dpi">
+                <option value="300">300 DPI</option>
+                <option value="240">240 DPI</option>
+                <option value="200">200 DPI</option>
+                <option value="400">400 DPI</option>
+              </select>
+            </label>
+
+            <div class="toggles" aria-label="处理选项">
+              <label><input id="deskew" type="checkbox" checked> 页面纠偏</label>
+              <label><input id="rotatePages" type="checkbox" checked> 自动旋转</label>
+              <label><input id="optimize" type="checkbox"> 轻度优化</label>
+              <label><input id="keepWork" type="checkbox"> 保留中间文件</label>
+              <label><input id="detailedPngProgress" type="checkbox"> 显示 PNG 每页进度</label>
+              <label><input id="recurse" type="checkbox"> 包含子文件夹</label>
+              <label><input id="skipExisting" type="checkbox" checked> 跳过已存在输出</label>
+            </div>
+
+            <button class="primary-action" type="button" id="startJob">开始制作</button>
+            <button class="secondary-action" type="button" id="cleanCache">清理缓存</button>
+            <button class="secondary-action" type="button" id="showRecent">查看最近输出</button>
+          </form>
+
+          <aside class="panel status">
+            <h2>任务状态</h2>
+            <p id="jobState">等待开始。</p>
+            <div class="progress-wrap" aria-label="任务进度">
+              <div class="progress-meta">
+                <span id="progressText">尚未开始</span>
+                <span id="progressPercent">0%</span>
+              </div>
+              <div class="progress-track">
+                <div id="progressBar" class="progress-bar"></div>
+              </div>
+            </div>
+            <pre id="logBox" aria-live="polite"></pre>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="fileDialog">
+      <div class="dialog-head">
+        <h2 id="dialogTitle">选择路径</h2>
+        <button type="button" id="closeDialog" aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-path" id="dialogPath"></div>
+      <div class="dialog-actions">
+        <button type="button" id="goParent">上一级</button>
+        <button type="button" id="selectCurrent">选择当前文件夹</button>
+      </div>
+      <div class="file-list" id="fileList"></div>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>

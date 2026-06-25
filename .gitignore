@@ -1,0 +1,11 @@
+tools/
+test-output/
+__pycache__/
+*.pyc
+*_work/
+*_queue-logs/
+*.exe
+*.msi
+*.zip
+*.7z
+*.rar
