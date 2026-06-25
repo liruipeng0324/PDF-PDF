@@ -171,6 +171,11 @@ $logDir = Join-Path $outputRoot "_queue-logs"
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $summaryPath = Join-Path $logDir ("summary-" + $timestamp + ".csv")
+$controlDir = Join-Path $logDir "control"
+$pauseFile = Join-Path $controlDir "pause.flag"
+$skipFile = Join-Path $controlDir "skip-next.flag"
+New-Item -ItemType Directory -Path $controlDir -Force | Out-Null
+Remove-Item -LiteralPath $pauseFile, $skipFile -Force -ErrorAction SilentlyContinue
 
 $queue = if ($QueueCsv) {
     @(Read-QueueCsv -Path $QueueCsv -TargetDir $outputRoot)
@@ -195,7 +200,18 @@ foreach ($item in $queue) {
     $message = ""
 
     try {
-        if ($SkipExisting -and (Test-Path -LiteralPath $item.OutputPath)) {
+        while (Test-Path -LiteralPath $pauseFile) {
+            Write-Host ("[{0}/{1}] PAUSED" -f $index, $queue.Count)
+            Start-Sleep -Seconds 2
+        }
+
+        if (Test-Path -LiteralPath $skipFile) {
+            Remove-Item -LiteralPath $skipFile -Force -ErrorAction SilentlyContinue
+            $status = "skipped"
+            $message = "Skipped by user."
+            Write-Host ("[{0}/{1}] SKIP {2}" -f $index, $queue.Count, $item.InputPath)
+        }
+        elseif ($SkipExisting -and (Test-Path -LiteralPath $item.OutputPath)) {
             $status = "skipped"
             $message = "Output already exists."
             Write-Host ("[{0}/{1}] SKIP {2}" -f $index, $queue.Count, $item.InputPath)

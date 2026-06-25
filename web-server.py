@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import string
 import subprocess
 import threading
@@ -15,11 +16,17 @@ from urllib.parse import parse_qs, urlparse
 
 
 ROOT = Path(__file__).resolve().parent
-POWERSHELL = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+POWERSHELL = os.path.join(
+    os.environ.get("SystemRoot", r"C:\Windows"),
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+)
 if not os.path.exists(POWERSHELL):
     POWERSHELL = "powershell"
-JOBS: dict[str, dict] = {}
 
+JOBS: dict[str, dict] = {}
 
 STAGE_RE = re.compile(r"\[(\d+)/(\d+)\]\s*(.*)")
 OCR_TOTAL_RE = re.compile(r"OCR_TOTAL_PAGES\s+(\d+)")
@@ -43,6 +50,63 @@ def read_json(handler: SimpleHTTPRequestHandler) -> dict:
     if not raw:
         return {}
     return json.loads(raw.decode("utf-8"))
+
+
+def add_tool_paths(env: dict[str, str]) -> dict[str, str]:
+    paths = [
+        ROOT / "tools" / "Python313",
+        ROOT / "tools" / "Python313" / "Scripts",
+        ROOT / "tools" / "poppler-26.02.0-0" / "poppler-26.02.0" / "Library" / "bin",
+        ROOT / "tools" / "qpdf-12.3.2" / "qpdf-12.3.2-msvc64" / "bin",
+        ROOT / "tools" / "tesseract",
+        ROOT / "tools" / "tesseract-nsis",
+        ROOT / "tools" / "ghostscript-10.07.1" / "bin",
+        Path(r"D:\OCR"),
+        Path(r"D:\GPL\gs10.07.1\bin"),
+    ]
+    existing = [str(path) for path in paths if path.exists()]
+    env["PATH"] = ";".join(existing + [env.get("PATH", "")])
+    packages = ROOT / "tools" / "python-packages"
+    if packages.exists():
+        env["PYTHONPATH"] = str(packages) + (";" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    tessdata = ROOT / "tools" / "tessdata"
+    if tessdata.exists():
+        env["TESSDATA_PREFIX"] = str(tessdata)
+    return env
+
+
+def run_short(command: list[str], timeout: int = 12) -> tuple[bool, str]:
+    try:
+        result = subprocess.run(
+            command,
+            cwd=str(ROOT),
+            env=add_tool_paths(os.environ.copy()),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+        )
+        output = (result.stdout or "").strip()
+        return result.returncode == 0, output
+    except Exception as exc:  # noqa: BLE001
+        return False, str(exc)
+
+
+def find_python() -> str:
+    candidates = [
+        ROOT / "tools" / "Python313" / "python.exe",
+        Path(r"C:\Users\Administrator\AppData\Local\Python\bin\python.exe"),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    for name in ("py", "python"):
+        path = shutil.which(name)
+        if path and r"\Microsoft\WindowsApps\\" not in path:
+            return path
+    return ""
 
 
 def drive_roots() -> list[dict]:
@@ -87,6 +151,25 @@ def list_directory(path: str) -> dict:
     return {"path": str(current), "parent": parent, "items": items}
 
 
+def explain_error(log: str) -> str:
+    patterns = [
+        ("Tesseract language data is missing", "OCR 语言包缺失。请把对应的 .traineddata 放到 tools\\tessdata，或在界面里换成已经安装的语言。"),
+        ("does not have language data", "OCR 语言包缺失。常见原因是缺少 chi_sim.traineddata。"),
+        ("Can't open hocr", "Tesseract 配置文件不完整。请确认 tools\\tessdata 里有 configs、tessconfigs、pdf.ttf。"),
+        ("Word PDF export failed", "Word 导出 PDF 失败。请确认电脑已安装 Microsoft Word，并且当前桌面会话能正常打开 Word。"),
+        ("No PNG pages were created", "PDF 转图片没有生成页面。请确认源 PDF 能正常打开，且 Poppler 可用。"),
+        ("pdftoppm failed", "PDF 转 PNG 失败。请尝试降低 DPI，或检查 PDF 是否损坏/加密。"),
+        ("OCRmyPDF failed", "OCR 阶段失败。请查看日志末尾，通常与 OCR 语言包、PDF 图片或权限有关。"),
+        ("Access is denied", "路径没有写入权限，或目标 PDF 正被其他程序打开。"),
+        ("Permission denied", "路径没有写入权限，或目标 PDF 正被其他程序打开。"),
+        ("Queue is empty", "队列为空。请确认输入文件夹里有 PDF/Word 文件，或 CSV 内容正确。"),
+    ]
+    for marker, message in patterns:
+        if marker.lower() in log.lower():
+            return message
+    return ""
+
+
 def run_job(job_id: str, command: list[str], cwd: Path) -> None:
     job = JOBS[job_id]
     job["status"] = "running"
@@ -96,6 +179,7 @@ def run_job(job_id: str, command: list[str], cwd: Path) -> None:
         process = subprocess.Popen(
             command,
             cwd=str(cwd),
+            env=add_tool_paths(os.environ.copy()),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -103,24 +187,37 @@ def run_job(job_id: str, command: list[str], cwd: Path) -> None:
             errors="replace",
         )
         job["pid"] = process.pid
+        job["process"] = process
         lines = []
         assert process.stdout is not None
         for line in process.stdout:
             clean_line = line.rstrip()
             lines.append(clean_line)
             update_progress(job, clean_line)
-            job["log"] = "\n".join(lines[-500:])
+            text = "\n".join(lines[-700:])
+            job["log"] = text
+            job["friendlyError"] = explain_error(text)
+            if job.get("cancelRequested"):
+                break
+        if job.get("cancelRequested") and process.poll() is None:
+            process.terminate()
         code = process.wait()
         job["exitCode"] = code
-        job["status"] = "success" if code == 0 else "failed"
-        if code == 0:
-            job["progress"] = 100
-            job["progressText"] = "完成"
-    except Exception as exc:  # noqa: BLE001 - return readable job error to local UI
+        if job.get("cancelRequested"):
+            job["status"] = "cancelled"
+            job["progressText"] = "已取消"
+        else:
+            job["status"] = "success" if code == 0 else "failed"
+            if code == 0:
+                job["progress"] = 100
+                job["progressText"] = "完成"
+    except Exception as exc:  # noqa: BLE001
         job["status"] = "failed"
         job["exitCode"] = -1
         job["log"] = (job.get("log", "") + "\n" + str(exc)).strip()
+        job["friendlyError"] = explain_error(job["log"]) or str(exc)
     finally:
+        job.pop("process", None)
         job["finishedAt"] = time.strftime("%Y-%m-%d %H:%M:%S")
 
 
@@ -174,24 +271,23 @@ def update_progress(job: dict, line: str) -> None:
     if total == 5:
         job["currentStage"] = current
         progress = min(99, max(1, int(((current - 1) / total) * 100)))
-        if detail:
-            job["progressText"] = f"步骤 {current}/{total}: {detail}"
-        else:
-            job["progressText"] = f"步骤 {current}/{total}"
+        job["progressText"] = f"步骤 {current}/{total}: {detail}" if detail else f"步骤 {current}/{total}"
         if current == 4 and job.get("ocrTotalPages"):
             total_pages = job["ocrTotalPages"]
             current_page = job.get("ocrCurrentPage", 0)
-            if current_page:
-                job["progressText"] = f"OCR 正在扫描第 {current_page} / {total_pages} 页"
-            else:
-                job["progressText"] = f"OCR 正在扫描，共 {total_pages} 页"
+            job["progressText"] = (
+                f"OCR 正在扫描第 {current_page} / {total_pages} 页"
+                if current_page
+                else f"OCR 正在扫描，共 {total_pages} 页"
+            )
         if current == 2 and job.get("pngTotalPages"):
             total_pages = job["pngTotalPages"]
             current_page = job.get("pngCurrentPage", 0)
-            if current_page:
-                job["progressText"] = f"PNG 正在转换第 {current_page} / {total_pages} 页"
-            else:
-                job["progressText"] = f"PNG 正在转换，共 {total_pages} 页"
+            job["progressText"] = (
+                f"PNG 正在转换第 {current_page} / {total_pages} 页"
+                if current_page
+                else f"PNG 正在转换，共 {total_pages} 页"
+            )
     else:
         progress = min(99, max(1, int((current / total) * 100)))
         job["progressText"] = f"队列 {current}/{total}: {detail}" if detail else f"队列 {current}/{total}"
@@ -203,10 +299,21 @@ def switch_arg(enabled: bool, name: str) -> list[str]:
     return [name] if enabled else []
 
 
+def mode_flags(payload: dict) -> tuple[bool, bool, bool, bool]:
+    mode = payload.get("ocrMode", "standard")
+    detailed = bool(payload.get("detailedPngProgress"))
+    if mode == "fast":
+        return False, False, False, detailed
+    if mode == "accurate":
+        return True, True, bool(payload.get("optimize")), detailed
+    return bool(payload.get("deskew")), bool(payload.get("rotatePages")), bool(payload.get("optimize")), detailed
+
+
 def build_command(payload: dict) -> list[str]:
     mode = payload.get("mode", "single")
     language = payload.get("language", "chi_sim+eng")
     dpi = str(payload.get("dpi", 300))
+    deskew, rotate_pages, optimize, detailed_png = mode_flags(payload)
 
     base = [POWERSHELL, "-ExecutionPolicy", "Bypass"]
 
@@ -232,11 +339,11 @@ def build_command(payload: dict) -> list[str]:
         command += ["-InputType", payload.get("inputType", "pdf")]
 
     command += ["-Language", language, "-Dpi", dpi]
-    command += switch_arg(bool(payload.get("deskew")), "-Deskew")
-    command += switch_arg(bool(payload.get("rotatePages")), "-RotatePages")
-    command += switch_arg(bool(payload.get("optimize")), "-Optimize")
+    command += switch_arg(deskew, "-Deskew")
+    command += switch_arg(rotate_pages, "-RotatePages")
+    command += switch_arg(optimize, "-Optimize")
     command += switch_arg(bool(payload.get("keepWork")), "-KeepWork")
-    command += switch_arg(bool(payload.get("detailedPngProgress")), "-DetailedPngProgress")
+    command += switch_arg(detailed_png, "-DetailedPngProgress")
     if mode == "queue-dir":
         command += switch_arg(bool(payload.get("recurse")), "-Recurse")
     if mode != "single":
@@ -249,7 +356,11 @@ def expected_outputs(payload: dict) -> dict:
     output_path = payload.get("outputPath", "")
     if mode == "single":
         return {"outputPath": output_path, "outputDir": str(Path(output_path).parent) if output_path else ""}
-    return {"outputDir": output_path, "summaryHint": str(Path(output_path) / "_queue-logs") if output_path else ""}
+    return {
+        "outputDir": output_path,
+        "summaryHint": str(Path(output_path) / "_queue-logs") if output_path else "",
+        "controlDir": str(Path(output_path) / "_queue-logs" / "control") if output_path else "",
+    }
 
 
 def clean_cache() -> dict:
@@ -280,11 +391,87 @@ def recent_outputs() -> dict:
             "modified": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(stat.st_mtime)),
         }
 
-    return {
-        "pdfs": [item(path) for path in pdfs],
-        "summaries": [item(path) for path in summaries],
-        "logs": [item(path) for path in logs],
-    }
+    return {"pdfs": [item(path) for path in pdfs], "summaries": [item(path) for path in summaries], "logs": [item(path) for path in logs]}
+
+
+def dependency_checks() -> dict:
+    python = find_python()
+    checks = []
+
+    def add(name: str, ok: bool, detail: str, fix: str = "") -> None:
+        checks.append({"name": name, "ok": ok, "detail": detail.splitlines()[0] if detail else "", "fix": fix})
+
+    add("Python", bool(python), python or "未找到 Python", "安装 Python，或放入 tools\\Python313。")
+    if python:
+        ok, output = run_short([python, "--version"])
+        add("Python 版本", ok, output, "确认 Python 可以正常启动。")
+        for module in ("ocrmypdf", "img2pdf", "pikepdf"):
+            ok, output = run_short([python, "-m", module, "--version"] if module != "pikepdf" else [python, "-c", "import pikepdf; print(pikepdf.__version__)"])
+            add(f"Python 模块 {module}", ok, output, "运行 install-python-packages.ps1 安装依赖。")
+
+    for name, command, args, fix in [
+        ("Poppler pdftoppm", "pdftoppm", ["-v"], "安装 Poppler，或放入 tools\\poppler-26.02.0-0。"),
+        ("qpdf", "qpdf", ["--version"], "安装 qpdf，或放入 tools\\qpdf-12.3.2。"),
+        ("Tesseract OCR", "tesseract", ["--version"], "安装 Tesseract，或放入 tools\\tesseract。"),
+        ("Ghostscript", "gswin64c", ["--version"], "安装 Ghostscript，或放入 tools\\ghostscript-10.07.1。"),
+    ]:
+        ok, output = run_short([command, *args])
+        add(name, ok, output, fix)
+
+    ok, output = run_short(["tesseract", "--list-langs"])
+    langs = set(line.strip() for line in output.splitlines() if line.strip() and not line.startswith("List of"))
+    add("中文 OCR 语言包", ok and "chi_sim" in langs, "已安装 chi_sim" if "chi_sim" in langs else output, "把 chi_sim.traineddata 放入 tools\\tessdata。")
+
+    ok, output = run_short([POWERSHELL, "-ExecutionPolicy", "Bypass", "-File", str(ROOT / "check-word.ps1")], timeout=20)
+    add("Microsoft Word 自动导出", ok and "available" in output.lower(), output, "安装 Microsoft Word；没有 Word 时请选择“已导出的 PDF”模式。")
+
+    return {"checks": checks, "allOk": all(item["ok"] for item in checks)}
+
+
+def cancel_job(job_id: str) -> dict:
+    job = JOBS.get(job_id)
+    if not job:
+        raise ValueError("任务不存在。")
+    job["cancelRequested"] = True
+    process = job.get("process")
+    if process and process.poll() is None:
+        process.terminate()
+    return {"status": job.get("status", "unknown")}
+
+
+def control_job(job_id: str, action: str) -> dict:
+    job = JOBS.get(job_id)
+    if not job:
+        raise ValueError("任务不存在。")
+    control_dir = (job.get("outputs") or {}).get("controlDir")
+    if not control_dir:
+        raise ValueError("当前任务不是队列任务，不能暂停或跳过。")
+    path = Path(control_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    pause_file = path / "pause.flag"
+    skip_file = path / "skip-next.flag"
+    if action == "pause":
+        pause_file.write_text("pause", encoding="utf-8")
+        job["queueControl"] = "paused"
+    elif action == "resume":
+        pause_file.unlink(missing_ok=True)
+        job["queueControl"] = "running"
+    elif action == "skip":
+        skip_file.write_text("skip", encoding="utf-8")
+        job["queueControl"] = "skip-next"
+    else:
+        raise ValueError("未知队列控制命令。")
+    return {"queueControl": job.get("queueControl", "")}
+
+
+def open_path(path: str) -> None:
+    if not path:
+        raise ValueError("路径不能为空。")
+    target = Path(path)
+    if target.is_file():
+        subprocess.Popen(["explorer.exe", "/select,", str(target)])
+    else:
+        subprocess.Popen(["explorer.exe", str(target)])
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -294,7 +481,7 @@ class Handler(SimpleHTTPRequestHandler):
     def log_message(self, format: str, *args) -> None:
         return
 
-    def do_GET(self) -> None:  # noqa: N802 - stdlib hook
+    def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         if parsed.path == "/api/list":
             query = parse_qs(parsed.query)
@@ -312,7 +499,8 @@ class Handler(SimpleHTTPRequestHandler):
             if not job:
                 json_response(self, 404, {"ok": False, "error": "任务不存在。"})
                 return
-            json_response(self, 200, {"ok": True, "job": job})
+            visible = {key: value for key, value in job.items() if key != "process"}
+            json_response(self, 200, {"ok": True, "job": visible})
             return
 
         if parsed.path == "/api/recent":
@@ -322,16 +510,45 @@ class Handler(SimpleHTTPRequestHandler):
                 json_response(self, 400, {"ok": False, "error": str(exc)})
             return
 
+        if parsed.path == "/api/tools":
+            json_response(self, 200, {"ok": True, **dependency_checks()})
+            return
+
         if parsed.path == "/":
             self.path = "/index.html"
         super().do_GET()
 
-    def do_POST(self) -> None:  # noqa: N802 - stdlib hook
+    def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         if parsed.path == "/api/clean-cache":
             try:
                 result = clean_cache()
                 json_response(self, 200, {"ok": True, **result})
+            except Exception as exc:  # noqa: BLE001
+                json_response(self, 400, {"ok": False, "error": str(exc)})
+            return
+
+        if parsed.path == "/api/cancel":
+            try:
+                payload = read_json(self)
+                json_response(self, 200, {"ok": True, **cancel_job(payload.get("jobId", ""))})
+            except Exception as exc:  # noqa: BLE001
+                json_response(self, 400, {"ok": False, "error": str(exc)})
+            return
+
+        if parsed.path == "/api/control":
+            try:
+                payload = read_json(self)
+                json_response(self, 200, {"ok": True, **control_job(payload.get("jobId", ""), payload.get("action", ""))})
+            except Exception as exc:  # noqa: BLE001
+                json_response(self, 400, {"ok": False, "error": str(exc)})
+            return
+
+        if parsed.path == "/api/open-path":
+            try:
+                payload = read_json(self)
+                open_path(payload.get("path", ""))
+                json_response(self, 200, {"ok": True})
             except Exception as exc:  # noqa: BLE001
                 json_response(self, 400, {"ok": False, "error": str(exc)})
             return
@@ -350,11 +567,13 @@ class Handler(SimpleHTTPRequestHandler):
                 "command": command,
                 "outputs": expected_outputs(payload),
                 "log": "",
+                "friendlyError": "",
                 "exitCode": None,
                 "progress": 0,
                 "progressText": "等待开始",
                 "startedAt": "",
                 "finishedAt": "",
+                "cancelRequested": False,
             }
             thread = threading.Thread(target=run_job, args=(job_id, command, ROOT), daemon=True)
             thread.start()

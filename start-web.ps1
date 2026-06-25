@@ -1,13 +1,19 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$python = "C:\Users\Administrator\AppData\Local\Python\bin\python.exe"
+$python = Join-Path $PSScriptRoot "tools\Python313\python.exe"
 if (-not (Test-Path -LiteralPath $python)) {
-    $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
-    if (-not $pythonCommand -or $pythonCommand.Source -like "*\Microsoft\WindowsApps\*") {
-        throw "Python was not found."
+    $localPython = "C:\Users\Administrator\AppData\Local\Python\bin\python.exe"
+    if (Test-Path -LiteralPath $localPython) {
+        $python = $localPython
     }
-    $python = $pythonCommand.Source
+    else {
+        $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+        if (-not $pythonCommand -or $pythonCommand.Source -like "*\Microsoft\WindowsApps\*") {
+            throw "Python was not found. Run setup-dependencies.ps1 first."
+        }
+        $python = $pythonCommand.Source
+    }
 }
 
 $url = "http://127.0.0.1:8765/"
@@ -21,4 +27,3 @@ if (-not $existing) {
 
 Start-Process $url
 Write-Host $url
-

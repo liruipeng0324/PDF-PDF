@@ -324,9 +324,14 @@ function Invoke-Ocr {
 }
 
 function Get-PythonCommand {
-    $projectPython = "C:\Users\Administrator\AppData\Local\Python\bin\python.exe"
+    $projectPython = Join-Path $PSScriptRoot "tools\Python313\python.exe"
     if (Test-Path -LiteralPath $projectPython) {
         return $projectPython
+    }
+
+    $localPython = "C:\Users\Administrator\AppData\Local\Python\bin\python.exe"
+    if (Test-Path -LiteralPath $localPython) {
+        return $localPython
     }
 
     $pyCommand = Get-Command "py" -ErrorAction SilentlyContinue

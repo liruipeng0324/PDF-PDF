@@ -2,9 +2,19 @@
 setlocal
 
 set "ROOT=%~dp0"
-set "PYTHON=C:\Users\Administrator\AppData\Local\Python\bin\python.exe"
+set "PYTHON=%ROOT%tools\Python313\python.exe"
 
 if not exist "%PYTHON%" (
+  set "PYTHON=C:\Users\Administrator\AppData\Local\Python\bin\python.exe"
+)
+
+if not exist "%PYTHON%" (
+  where python >nul 2>nul
+  if errorlevel 1 (
+    echo 未找到 Python。请先运行 setup-dependencies.ps1 检查依赖。
+    pause
+    exit /b 1
+  )
   set "PYTHON=python"
 )
 
