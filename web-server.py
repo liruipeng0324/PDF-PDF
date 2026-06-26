@@ -7,6 +7,7 @@ import re
 import shutil
 import string
 import subprocess
+import tempfile
 import threading
 import time
 import uuid
@@ -29,6 +30,8 @@ if not os.path.exists(POWERSHELL):
 JOBS: dict[str, dict] = {}
 
 STAGE_RE = re.compile(r"\[(\d+)/(\d+)\]\s*(.*)")
+QUEUE_START_RE = re.compile(r"\[(\d+)/(\d+)\]\s+START\s+(.*)")
+QUEUE_END_RE = re.compile(r"\[(\d+)/(\d+)\]\s+(OK|FAIL|SKIP)\s+(.*)")
 OCR_TOTAL_RE = re.compile(r"OCR_TOTAL_PAGES\s+(\d+)")
 OCR_PAGE_RE = re.compile(r"(?:page|Page|OCR).*?(\d+)\s*/\s*(\d+)|(?:page|Page)\s+(\d+)")
 PNG_TOTAL_RE = re.compile(r"PNG_TOTAL_PAGES\s+(\d+)")
@@ -206,7 +209,7 @@ def run_job(job_id: str, command: list[str], cwd: Path) -> None:
             if job.get("cancelRequested"):
                 break
         if job.get("cancelRequested") and process.poll() is None:
-            process.terminate()
+            terminate_process_tree(process.pid)
         code = process.wait()
         job["exitCode"] = code
         if job.get("cancelRequested"):
@@ -227,7 +230,51 @@ def run_job(job_id: str, command: list[str], cwd: Path) -> None:
         job["finishedAt"] = time.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def terminate_process_tree(pid: int) -> None:
+    if not pid:
+        return
+    try:
+        subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+        )
+    except Exception:
+        try:
+            subprocess.run(
+                [POWERSHELL, "-NoProfile", "-Command", f"Stop-Process -Id {int(pid)} -Force -ErrorAction SilentlyContinue"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=10,
+            )
+        except Exception:
+            return
+
+
 def update_progress(job: dict, line: str) -> None:
+    queue_start_match = QUEUE_START_RE.search(line)
+    if queue_start_match:
+        current = int(queue_start_match.group(1))
+        total = max(int(queue_start_match.group(2)), 1)
+        job["queueCurrent"] = current
+        job["queueTotal"] = total
+        job["progress"] = max(1, int(((current - 1) / total) * 100))
+        job["progressText"] = f"队列 {current}/{total}: 开始处理"
+        return
+
+    queue_end_match = QUEUE_END_RE.search(line)
+    if queue_end_match:
+        current = int(queue_end_match.group(1))
+        total = max(int(queue_end_match.group(2)), 1)
+        status = queue_end_match.group(3)
+        job["queueCurrent"] = current
+        job["queueTotal"] = total
+        job["progress"] = min(99, int((current / total) * 100))
+        status_text = {"OK": "完成", "FAIL": "失败", "SKIP": "跳过"}.get(status, status)
+        job["progressText"] = f"队列 {current}/{total}: {status_text}"
+        return
+
     png_total_match = PNG_TOTAL_RE.search(line)
     if png_total_match:
         job["pngTotalPages"] = int(png_total_match.group(1))
@@ -239,8 +286,7 @@ def update_progress(job: dict, line: str) -> None:
         total_pages = int(png_page_match.group(2))
         job["pngCurrentPage"] = min(current_page, total_pages)
         job["pngTotalPages"] = total_pages
-        page_progress = int((job["pngCurrentPage"] / max(total_pages, 1)) * 20)
-        job["progress"] = min(39, 20 + page_progress)
+        update_page_progress(job, 0.20, 0.20, job["pngCurrentPage"], total_pages)
         job["progressText"] = f"PNG 正在转换第 {job['pngCurrentPage']} / {total_pages} 页"
         return
 
@@ -262,8 +308,7 @@ def update_progress(job: dict, line: str) -> None:
                     total_pages = int(job["ocrTotalPages"])
                 job["ocrCurrentPage"] = min(current_page, total_pages)
                 job["ocrTotalPages"] = total_pages
-                page_progress = int((job["ocrCurrentPage"] / max(total_pages, 1)) * 20)
-                job["progress"] = min(79, 60 + page_progress)
+                update_page_progress(job, 0.60, 0.20, job["ocrCurrentPage"], total_pages)
                 job["progressText"] = f"OCR 正在扫描第 {job['ocrCurrentPage']} / {total_pages} 页"
         if "Queue complete." in line:
             job["progress"] = 100
@@ -299,6 +344,18 @@ def update_progress(job: dict, line: str) -> None:
         job["progressText"] = f"队列 {current}/{total}: {detail}" if detail else f"队列 {current}/{total}"
 
     job["progress"] = progress
+
+
+def update_page_progress(job: dict, stage_start: float, stage_span: float, current_page: int, total_pages: int) -> None:
+    queue_current = job.get("queueCurrent")
+    queue_total = job.get("queueTotal")
+    page_ratio = current_page / max(total_pages, 1)
+    item_ratio = min(0.99, stage_start + stage_span * page_ratio)
+    if queue_current and queue_total:
+        overall = ((queue_current - 1) + item_ratio) / max(queue_total, 1)
+        job["progress"] = min(99, max(1, int(overall * 100)))
+    else:
+        job["progress"] = min(99, max(1, int(item_ratio * 100)))
 
 
 def switch_arg(enabled: bool, name: str) -> list[str]:
@@ -441,7 +498,7 @@ def cancel_job(job_id: str) -> dict:
     job["cancelRequested"] = True
     process = job.get("process")
     if process and process.poll() is None:
-        process.terminate()
+        terminate_process_tree(process.pid)
     return {"status": job.get("status", "unknown")}
 
 
@@ -478,6 +535,122 @@ def open_path(path: str) -> None:
         subprocess.Popen(["explorer.exe", "/select,", str(target)])
     else:
         subprocess.Popen(["explorer.exe", str(target)])
+
+
+def native_pick(payload: dict) -> dict:
+    kind = payload.get("kind", "file")
+    title = payload.get("title", "选择路径")
+    file_filter = payload.get("filter", "所有文件 (*.*)|*.*")
+    initial = payload.get("initialPath", "")
+    return native_pick_tk(kind, title, file_filter, initial)
+
+    script = r'''
+param(
+    [string]$Kind,
+    [string]$Title,
+    [string]$Filter,
+    [string]$Initial,
+    [string]$ResultPath
+)
+
+Add-Type -AssemblyName System.Windows.Forms
+[System.Windows.Forms.Application]::EnableVisualStyles()
+
+if ($Kind -eq "dir") {
+    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dialog.Description = $Title
+    $dialog.ShowNewFolderButton = $true
+    if ($Initial -and (Test-Path -LiteralPath $Initial)) {
+        if ((Get-Item -LiteralPath $Initial).PSIsContainer) {
+            $dialog.SelectedPath = $Initial
+        }
+        else {
+            $dialog.SelectedPath = Split-Path -Parent $Initial
+        }
+    }
+    if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+        Set-Content -LiteralPath $ResultPath -Value $dialog.SelectedPath -Encoding UTF8
+    }
+    exit 0
+}
+
+$dialog = New-Object System.Windows.Forms.OpenFileDialog
+$dialog.Title = $Title
+$dialog.Filter = $Filter
+$dialog.CheckFileExists = $true
+$dialog.Multiselect = $false
+if ($Initial -and (Test-Path -LiteralPath $Initial)) {
+    if ((Get-Item -LiteralPath $Initial).PSIsContainer) {
+        $dialog.InitialDirectory = $Initial
+    }
+    else {
+        $dialog.InitialDirectory = Split-Path -Parent $Initial
+    }
+}
+if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+    Set-Content -LiteralPath $ResultPath -Value $dialog.FileName -Encoding UTF8
+}
+'''
+    temp_path = ""
+    result_path = ""
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=".ps1", delete=False, encoding="utf-8") as handle:
+            handle.write(script)
+            temp_path = handle.name
+        result_handle = tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8")
+        result_path = result_handle.name
+        result_handle.close()
+        Path(result_path).write_text("", encoding="utf-8")
+
+        process = subprocess.Popen(
+            [POWERSHELL, "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File", temp_path, kind, title, file_filter, initial, result_path],
+            cwd=str(ROOT),
+            creationflags=subprocess.CREATE_NEW_CONSOLE,
+        )
+        code = process.wait(timeout=600)
+        if code != 0:
+            raise RuntimeError("系统文件资源管理器选择窗口打开失败。")
+        selected = Path(result_path).read_text(encoding="utf-8-sig").strip().splitlines()
+        return {"selected": selected[-1] if selected else ""}
+    finally:
+        if temp_path:
+            Path(temp_path).unlink(missing_ok=True)
+        if result_path:
+            Path(result_path).unlink(missing_ok=True)
+
+
+def native_pick_tk(kind: str, title: str, file_filter: str, initial: str) -> dict:
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except Exception:
+        return {"selected": ""}
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    root.update()
+
+    initial_path = Path(initial) if initial else None
+    initial_dir = ""
+    if initial_path and initial_path.exists():
+        initial_dir = str(initial_path if initial_path.is_dir() else initial_path.parent)
+
+    try:
+        if kind == "dir":
+            selected = filedialog.askdirectory(title=title, initialdir=initial_dir or None, mustexist=False)
+        else:
+            filetypes = [("所有文件", "*.*")]
+            if "PDF" in file_filter:
+                filetypes = [("PDF 文件", "*.pdf"), ("所有文件", "*.*")]
+            elif "Word" in file_filter:
+                filetypes = [("Word 文档", "*.doc *.docx"), ("所有文件", "*.*")]
+            elif "CSV" in file_filter:
+                filetypes = [("CSV 队列", "*.csv"), ("所有文件", "*.*")]
+            selected = filedialog.askopenfilename(title=title, initialdir=initial_dir or None, filetypes=filetypes)
+        return {"selected": selected or ""}
+    finally:
+        root.destroy()
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -555,6 +728,14 @@ class Handler(SimpleHTTPRequestHandler):
                 payload = read_json(self)
                 open_path(payload.get("path", ""))
                 json_response(self, 200, {"ok": True})
+            except Exception as exc:  # noqa: BLE001
+                json_response(self, 400, {"ok": False, "error": str(exc)})
+            return
+
+        if parsed.path == "/api/pick":
+            try:
+                payload = read_json(self)
+                json_response(self, 200, {"ok": True, **native_pick(payload)})
             except Exception as exc:  # noqa: BLE001
                 json_response(self, 400, {"ok": False, "error": str(exc)})
             return

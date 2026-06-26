@@ -41,17 +41,17 @@
             <div class="picker-row">
               <label>
                 <span id="sourceLabel">带书签 PDF</span>
-                <input id="sourcePath" name="sourcePath" type="text" readonly placeholder="请选择源文件">
+                <input id="sourcePath" name="sourcePath" type="text" readonly placeholder="点击选择输入">
               </label>
-              <button type="button" id="pickSource">选择</button>
+              <button type="button" id="pickSource">上传/选择</button>
             </div>
 
             <div class="picker-row">
               <label>
-                <span id="outputLabel">输出 PDF</span>
-                <input id="outputPath" name="outputPath" type="text" readonly placeholder="请选择输出位置">
+                <span id="outputLabel">输出文件夹</span>
+                <input id="outputPath" name="outputPath" type="text" readonly placeholder="点击选择输出目录">
               </label>
-              <button type="button" id="pickOutput">选择</button>
+              <button type="button" id="pickOutput">选择目录</button>
             </div>
 
             <label>
@@ -128,19 +128,6 @@
       </section>
     </main>
 
-    <dialog id="fileDialog">
-      <div class="dialog-head">
-        <h2 id="dialogTitle">选择路径</h2>
-        <button type="button" id="closeDialog" aria-label="关闭">×</button>
-      </div>
-      <div class="dialog-path" id="dialogPath"></div>
-      <div class="dialog-actions">
-        <button type="button" id="goParent">上一级</button>
-        <button type="button" id="selectCurrent">选择当前文件夹</button>
-      </div>
-      <div class="file-list" id="fileList"></div>
-    </dialog>
-
-    <script src="app.js"></script>
+    <script src="app.js?v=20260626-native-picker"></script>
   </body>
 </html>

@@ -146,9 +146,7 @@ form.panel {
 }
 
 .picker-row button,
-.primary-action,
-.dialog-actions button,
-.dialog-head button {
+.primary-action {
   min-height: 42px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -352,62 +350,6 @@ pre {
   border-radius: inherit;
   background: var(--accent);
   transition: width 180ms ease;
-}
-
-dialog {
-  width: min(760px, calc(100vw - 28px));
-  max-height: min(720px, calc(100vh - 28px));
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0;
-}
-
-dialog::backdrop {
-  background: rgba(16, 24, 32, 0.35);
-}
-
-.dialog-head,
-.dialog-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 14px;
-  border-bottom: 1px solid var(--line);
-}
-
-.dialog-actions {
-  justify-content: flex-start;
-}
-
-.dialog-path {
-  padding: 12px 14px;
-  color: var(--muted);
-  border-bottom: 1px solid var(--line);
-  word-break: break-all;
-}
-
-.file-list {
-  display: grid;
-  gap: 6px;
-  max-height: 420px;
-  overflow: auto;
-  padding: 14px;
-}
-
-.file-item {
-  min-height: 36px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 8px 10px;
-  text-align: left;
-  background: #fff;
-  cursor: pointer;
-  font: inherit;
-}
-
-.file-item.dir {
-  color: var(--accent-strong);
 }
 
 .steps {

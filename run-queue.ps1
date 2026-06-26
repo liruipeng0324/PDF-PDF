@@ -156,6 +156,76 @@ function Read-QueueDirectory {
     }
 }
 
+function Invoke-QueueChild {
+    param(
+        [string[]]$Arguments,
+        [string]$LogPath
+    )
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = "powershell"
+    foreach ($argument in $Arguments) {
+        [void]$psi.ArgumentList.Add($argument)
+    }
+    $psi.WorkingDirectory = $PSScriptRoot
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+    $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+
+    $logEncoding = New-Object System.Text.UTF8Encoding($false)
+    $writer = [System.IO.StreamWriter]::new($LogPath, $false, $logEncoding)
+
+    try {
+        [void]$process.Start()
+
+        while (-not $process.HasExited) {
+            while (-not $process.StandardOutput.EndOfStream) {
+                $line = $process.StandardOutput.ReadLine()
+                $writer.WriteLine($line)
+                $writer.Flush()
+                Write-Host $line
+            }
+
+            while (-not $process.StandardError.EndOfStream) {
+                $line = $process.StandardError.ReadLine()
+                $writer.WriteLine($line)
+                $writer.Flush()
+                Write-Host $line
+            }
+
+            Start-Sleep -Milliseconds 200
+        }
+
+        while (-not $process.StandardOutput.EndOfStream) {
+            $line = $process.StandardOutput.ReadLine()
+            $writer.WriteLine($line)
+            Write-Host $line
+        }
+
+        while (-not $process.StandardError.EndOfStream) {
+            $line = $process.StandardError.ReadLine()
+            $writer.WriteLine($line)
+            Write-Host $line
+        }
+
+        $writer.Flush()
+        return $process.ExitCode
+    }
+    finally {
+        $writer.Dispose()
+        if (-not $process.HasExited) {
+            $process.Kill()
+        }
+        $process.Dispose()
+    }
+}
+
 if (-not $InputDir -and -not $QueueCsv) {
     throw "Provide -InputDir or -QueueCsv."
 }
@@ -254,12 +324,7 @@ foreach ($item in $queue) {
                 $arguments += "-DetailedPngProgress"
             }
 
-            $oldPreference = $ErrorActionPreference
-            $ErrorActionPreference = "Continue"
-            $output = & powershell @arguments 2>&1
-            $childExitCode = $LASTEXITCODE
-            $ErrorActionPreference = $oldPreference
-            $output | Set-Content -LiteralPath $logPath -Encoding UTF8
+            $childExitCode = Invoke-QueueChild -Arguments $arguments -LogPath $logPath
 
             if ($childExitCode -ne 0) {
                 throw "make-dual-pdf.ps1 failed with exit code $childExitCode. See $logPath"

@@ -37,25 +37,16 @@ const resultActions = document.querySelector("#resultActions");
 const openOutput = document.querySelector("#openOutput");
 const openLogDir = document.querySelector("#openLogDir");
 const friendlyError = document.querySelector("#friendlyError");
-const dialog = document.querySelector("#fileDialog");
-const dialogTitle = document.querySelector("#dialogTitle");
-const dialogPath = document.querySelector("#dialogPath");
-const fileList = document.querySelector("#fileList");
-const closeDialog = document.querySelector("#closeDialog");
-const goParent = document.querySelector("#goParent");
-const selectCurrent = document.querySelector("#selectCurrent");
 
-let pickerTarget = "source";
-let pickerKind = "file";
-let currentPath = "";
 let pollTimer = null;
 let currentJobId = "";
 let lastOutputs = {};
 
 function modeInfo() {
-  const mode = fields.mode.value;
-  const isWord = fields.inputType.value === "word";
-  return { mode, isWord };
+  return {
+    mode: fields.mode.value,
+    isWord: fields.inputType.value === "word",
+  };
 }
 
 function updateLabels() {
@@ -67,9 +58,9 @@ function updateLabels() {
       : isWord
         ? "Word 文件"
         : "带书签 PDF";
-  outputLabel.textContent = mode === "single" ? "输出 PDF" : "输出文件夹";
-  fields.sourcePath.placeholder = "点击选择";
-  fields.outputPath.placeholder = "点击选择";
+  outputLabel.textContent = "输出文件夹";
+  fields.sourcePath.placeholder = "点击选择输入";
+  fields.outputPath.placeholder = "点击选择输出目录";
 }
 
 async function apiGet(url) {
@@ -90,16 +81,6 @@ async function apiPost(url, payload) {
   return data;
 }
 
-function allowedFile(item) {
-  const { mode, isWord } = modeInfo();
-  const name = item.name.toLowerCase();
-  if (item.type === "dir") return true;
-  if (pickerKind === "dir") return false;
-  if (mode === "queue-csv") return name.endsWith(".csv");
-  if (isWord) return name.endsWith(".doc") || name.endsWith(".docx");
-  return name.endsWith(".pdf");
-}
-
 function defaultOutputFile(folderPath) {
   const source = fields.sourcePath.value || "final.pdf";
   const normalized = source.replaceAll("\\", "/");
@@ -109,48 +90,35 @@ function defaultOutputFile(folderPath) {
   return `${folderPath}${separator}${stem}-dual-layer.pdf`;
 }
 
-async function loadDirectory(path = "") {
-  const data = await apiGet(`/api/list?path=${encodeURIComponent(path)}`);
-  currentPath = data.path;
-  dialogPath.textContent = currentPath || "此电脑";
-  fileList.innerHTML = "";
-  const items = data.items.filter(allowedFile);
-  for (const item of items) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `file-item ${item.type}`;
-    button.textContent = `${item.type === "dir" ? "[文件夹]" : "[文件]"} ${item.name}`;
-    button.addEventListener("click", async () => {
-      if (item.type === "dir") {
-        if (pickerKind === "dir" && pickerTarget === "source" && fields.mode.value === "queue-dir") {
-          fields.sourcePath.value = item.path;
-          dialog.close();
-        } else if (pickerKind === "dir" && pickerTarget === "output") {
-          fields.outputPath.value = fields.mode.value === "single" ? defaultOutputFile(item.path) : item.path;
-          dialog.close();
-        } else {
-          await loadDirectory(item.path);
-        }
-      } else {
-        if (pickerTarget === "source") fields.sourcePath.value = item.path;
-        if (pickerTarget === "output") fields.outputPath.value = item.path;
-        dialog.close();
-      }
-    });
-    fileList.appendChild(button);
-  }
-  goParent.disabled = !currentPath;
-  goParent.dataset.parent = data.parent || "";
+function pickerFilter(target) {
+  const { mode, isWord } = modeInfo();
+  if (target === "output") return "所有文件 (*.*)|*.*";
+  if (mode === "queue-csv") return "CSV 队列 (*.csv)|*.csv|所有文件 (*.*)|*.*";
+  if (isWord) return "Word 文档 (*.doc;*.docx)|*.doc;*.docx|所有文件 (*.*)|*.*";
+  return "PDF 文件 (*.pdf)|*.pdf|所有文件 (*.*)|*.*";
 }
 
-async function openPicker(target) {
-  pickerTarget = target;
+async function openSystemPicker(target) {
   const { mode } = modeInfo();
-  pickerKind = target === "source" && mode !== "queue-dir" ? "file" : "dir";
-  dialogTitle.textContent = target === "source" ? "选择输入" : "选择输出";
-  selectCurrent.hidden = pickerKind !== "dir";
-  dialog.showModal();
-  await loadDirectory(currentPath);
+  const kind = target === "source" && mode !== "queue-dir" ? "file" : "dir";
+  const title = target === "source" ? "选择输入" : "选择输出目录";
+  try {
+    const data = await apiPost("/api/pick", {
+      kind,
+      title,
+      filter: pickerFilter(target),
+      initialPath: target === "source" ? fields.sourcePath.value : fields.outputPath.value,
+    });
+    if (!data.selected) return;
+    if (target === "source") {
+      fields.sourcePath.value = data.selected;
+    } else {
+      fields.outputPath.value = fields.mode.value === "single" ? defaultOutputFile(data.selected) : data.selected;
+    }
+  } catch (error) {
+    jobState.textContent = "文件资源管理器没有打开。";
+    logBox.textContent = error.message;
+  }
 }
 
 function buildPayload() {
@@ -212,19 +180,23 @@ async function pollJob(jobId) {
   jobState.textContent = `状态：${job.status}`;
   renderProgress(job.progress || 0, job.progressText || "");
   renderOutputs(job.outputs || {});
+
   const outputs = job.outputs || {};
   const outputLines = [];
   if (outputs.outputPath) outputLines.push(`输出 PDF：${outputs.outputPath}`);
   if (outputs.outputDir) outputLines.push(`输出文件夹：${outputs.outputDir}`);
   if (outputs.summaryHint) outputLines.push(`队列日志：${outputs.summaryHint}`);
+
   const helperLines = [];
   if (job.status === "running" && String(job.progressText || "").includes("OCR")) {
     helperLines.push("OCR 正在执行。页数多、DPI 高、中文识别都会比较慢，请等待。");
   }
+
   friendlyError.hidden = !job.friendlyError;
   friendlyError.textContent = job.friendlyError || "";
   logBox.textContent = [outputLines.join("\n"), helperLines.join("\n"), job.log || ""].filter(Boolean).join("\n\n");
   logBox.scrollTop = logBox.scrollHeight;
+
   if (["success", "failed", "cancelled"].includes(job.status)) {
     clearInterval(pollTimer);
     pollTimer = null;
@@ -318,8 +290,10 @@ fields.ocrMode.addEventListener("change", () => {
     fields.rotatePages.checked = true;
   }
 });
-pickSource.addEventListener("click", () => openPicker("source"));
-pickOutput.addEventListener("click", () => openPicker("output"));
+pickSource.addEventListener("click", () => openSystemPicker("source"));
+pickOutput.addEventListener("click", () => openSystemPicker("output"));
+fields.sourcePath.addEventListener("click", () => openSystemPicker("source"));
+fields.outputPath.addEventListener("click", () => openSystemPicker("output"));
 startJob.addEventListener("click", startCurrentJob);
 cancelJob.addEventListener("click", cancelCurrentJob);
 pauseJob.addEventListener("click", () => controlCurrentJob("pause"));
@@ -359,13 +333,6 @@ showRecent.addEventListener("click", async () => {
   } catch (error) {
     logBox.textContent = error.message;
   }
-});
-closeDialog.addEventListener("click", () => dialog.close());
-goParent.addEventListener("click", () => loadDirectory(goParent.dataset.parent || ""));
-selectCurrent.addEventListener("click", () => {
-  if (pickerTarget === "source") fields.sourcePath.value = currentPath;
-  if (pickerTarget === "output") fields.outputPath.value = fields.mode.value === "single" ? defaultOutputFile(currentPath) : currentPath;
-  dialog.close();
 });
 
 updateLabels();
