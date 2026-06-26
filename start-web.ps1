@@ -22,37 +22,43 @@ $logPath = Join-Path $PSScriptRoot "web-server.log"
 $errorLogPath = Join-Path $PSScriptRoot "web-server-error.log"
 
 $existing = Get-NetTCPConnection -LocalPort 8765 -ErrorAction SilentlyContinue
-if (-not $existing) {
+foreach ($connection in $existing) {
+    if ($connection.OwningProcess -and $connection.OwningProcess -ne 0) {
+        Stop-Process -Id $connection.OwningProcess -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Start-Sleep -Milliseconds 500
+
+if (Test-Path -LiteralPath $logPath) {
+    Remove-Item -LiteralPath $logPath -Force
+}
+if (Test-Path -LiteralPath $errorLogPath) {
+    Remove-Item -LiteralPath $errorLogPath -Force
+}
+Start-Process -FilePath $python -ArgumentList @($serverScript, "--host", "127.0.0.1", "--port", "8765") -RedirectStandardOutput $logPath -RedirectStandardError $errorLogPath -WindowStyle Hidden
+
+$ready = $false
+foreach ($i in 1..20) {
+    try {
+        Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 1 | Out-Null
+        $ready = $true
+        break
+    }
+    catch {
+        Start-Sleep -Seconds 1
+    }
+}
+
+if (-not $ready) {
+    Write-Host "Web service did not start. Log: $logPath"
     if (Test-Path -LiteralPath $logPath) {
-        Remove-Item -LiteralPath $logPath -Force
+        Get-Content -LiteralPath $logPath
     }
     if (Test-Path -LiteralPath $errorLogPath) {
-        Remove-Item -LiteralPath $errorLogPath -Force
+        Get-Content -LiteralPath $errorLogPath
     }
-    Start-Process -FilePath $python -ArgumentList @($serverScript, "--host", "127.0.0.1", "--port", "8765") -RedirectStandardOutput $logPath -RedirectStandardError $errorLogPath -WindowStyle Hidden
-
-    $ready = $false
-    foreach ($i in 1..20) {
-        try {
-            Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 1 | Out-Null
-            $ready = $true
-            break
-        }
-        catch {
-            Start-Sleep -Seconds 1
-        }
-    }
-
-    if (-not $ready) {
-        Write-Host "Web service did not start. Log: $logPath"
-        if (Test-Path -LiteralPath $logPath) {
-            Get-Content -LiteralPath $logPath
-        }
-        if (Test-Path -LiteralPath $errorLogPath) {
-            Get-Content -LiteralPath $errorLogPath
-        }
-        exit 1
-    }
+    exit 1
 }
 
 Start-Process $url

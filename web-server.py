@@ -76,11 +76,17 @@ def add_tool_paths(env: dict[str, str]) -> dict[str, str]:
 
 
 def run_short(command: list[str], timeout: int = 12) -> tuple[bool, str]:
+    env = add_tool_paths(os.environ.copy())
+    executable = command[0]
+    if not Path(executable).exists():
+        resolved = shutil.which(executable, path=env.get("PATH", ""))
+        if resolved:
+            command = [resolved, *command[1:]]
     try:
         result = subprocess.run(
             command,
             cwd=str(ROOT),
-            env=add_tool_paths(os.environ.copy()),
+            env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -423,7 +429,7 @@ def dependency_checks() -> dict:
     add("中文 OCR 语言包", ok and "chi_sim" in langs, "已安装 chi_sim" if "chi_sim" in langs else output, "把 chi_sim.traineddata 放入 tools\\tessdata。")
 
     ok, output = run_short([POWERSHELL, "-ExecutionPolicy", "Bypass", "-File", str(ROOT / "check-word.ps1")], timeout=20)
-    add("Microsoft Word 自动导出", ok and "available" in output.lower(), output, "安装 Microsoft Word；没有 Word 时请选择“已导出的 PDF”模式。")
+    add("Microsoft Word 自动导出", ok and ("available" in output.lower() or "[found]" in output.lower()), output, "安装 Microsoft Word；没有 Word 时请选择“已导出的 PDF”模式。")
 
     return {"checks": checks, "allOk": all(item["ok"] for item in checks)}
 
