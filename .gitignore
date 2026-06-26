@@ -10,3 +10,5 @@ __pycache__/
 *.zip
 *.7z
 *.rar
+web-server.log
+web-server-error.log
