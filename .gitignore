@@ -1,5 +1,7 @@
 tools/*
 !tools/restore-bookmarks.py
+!tools/merge-png-pdf.py
+!tools/render-pdfium-pages.py
 test-output/
 __pycache__/
 *.pyc

@@ -376,6 +376,7 @@ def build_command(payload: dict) -> list[str]:
     mode = payload.get("mode", "single")
     language = payload.get("language", "chi_sim+eng")
     dpi = str(payload.get("dpi", 300))
+    render_engine = payload.get("renderEngine", "pdfium")
     deskew, rotate_pages, optimize, detailed_png = mode_flags(payload)
 
     base = [POWERSHELL, "-ExecutionPolicy", "Bypass"]
@@ -402,6 +403,7 @@ def build_command(payload: dict) -> list[str]:
         command += ["-InputType", payload.get("inputType", "pdf")]
 
     command += ["-Language", language, "-Dpi", dpi]
+    command += ["-RenderEngine", render_engine]
     command += switch_arg(deskew, "-Deskew")
     command += switch_arg(rotate_pages, "-RotatePages")
     command += switch_arg(optimize, "-Optimize")
@@ -468,8 +470,13 @@ def dependency_checks() -> dict:
     if python:
         ok, output = run_short([python, "--version"])
         add("Python 版本", ok, output, "确认 Python 可以正常启动。")
-        for module in ("ocrmypdf", "img2pdf", "pikepdf"):
-            ok, output = run_short([python, "-m", module, "--version"] if module != "pikepdf" else [python, "-c", "import pikepdf; print(pikepdf.__version__)"])
+        for module in ("ocrmypdf", "img2pdf", "pikepdf", "pypdfium2"):
+            command = [python, "-m", module, "--version"]
+            if module == "pikepdf":
+                command = [python, "-c", "import pikepdf; print(pikepdf.__version__)"]
+            elif module == "pypdfium2":
+                command = [python, "-c", "import pypdfium2; print('available')"]
+            ok, output = run_short(command)
             add(f"Python 模块 {module}", ok, output, "运行 install-python-packages.ps1 安装依赖。")
 
     for name, command, args, fix in [

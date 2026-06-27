@@ -21,7 +21,13 @@ param(
     [switch]$RotatePages,
     [switch]$Optimize,
     [switch]$KeepWork,
-    [switch]$DetailedPngProgress
+    [switch]$DetailedPngProgress,
+
+    [ValidateSet("pdfium", "poppler")]
+    [string]$RenderEngine = "pdfium",
+
+    [ValidateRange(1, 16)]
+    [int]$RenderWorkers = 4
 )
 
 Set-StrictMode -Version Latest
@@ -87,6 +93,23 @@ function Require-PythonModule {
     }
 
     & $python -m $Module --version *> $null
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Module was not found. $InstallHint"
+    }
+}
+
+function Require-PythonImport {
+    param(
+        [string]$Module,
+        [string]$InstallHint
+    )
+
+    $python = Get-PythonCommand
+    if (-not $python) {
+        throw "Python was not found. $InstallHint"
+    }
+
+    & $python -c "import $Module; print('ok')" *> $null
     if ($LASTEXITCODE -ne 0) {
         throw "$Module was not found. $InstallHint"
     }
@@ -202,7 +225,9 @@ function Convert-PdfToPngPages {
     param(
         [string]$SourcePdf,
         [string]$PagesDir,
-        [int]$Resolution
+        [int]$Resolution,
+        [string]$Engine = "pdfium",
+        [int]$Workers = 4
     )
 
     Write-Host "[2/5] Rendering PDF pages to PNG..."
@@ -221,7 +246,28 @@ function Convert-PdfToPngPages {
     $pageCount = [int]($pageCountText | Select-Object -First 1)
     Write-Host ("PNG_TOTAL_PAGES " + $pageCount)
 
-    if ($DetailedPngProgress) {
+    if ($Engine -eq "pdfium") {
+        Require-PythonImport "pypdfium2" "Install pypdfium2 with install-python-packages.ps1."
+
+        $Workers = [Math]::Max(1, [Math]::Min($Workers, $pageCount))
+        Write-Host ("PNG_ENGINE pdfium")
+        Write-Host ("PNG_FAST_MODE pdfium parallel rendering with " + $Workers + " workers...")
+
+        $script = Join-Path $PSScriptRoot "tools\render-pdfium-pages.py"
+        $arguments = @(
+            $script,
+            "--input", $SourcePdf,
+            "--output-dir", $PagesDir,
+            "--dpi", $Resolution,
+            "--workers", $Workers
+        )
+
+        & $python @arguments 2>&1 | ForEach-Object { Write-Host $_ }
+        if ($LASTEXITCODE -ne 0) {
+            throw "PDFium rendering failed with exit code: $LASTEXITCODE"
+        }
+    }
+    elseif ($DetailedPngProgress) {
         for ($page = 1; $page -le $pageCount; $page += 1) {
             Write-Host ("PNG_PAGE " + $page + "/" + $pageCount)
             $prefix = Join-Path $PagesDir ("page-" + ("{0:D6}" -f $page))
@@ -233,19 +279,62 @@ function Convert-PdfToPngPages {
         }
     }
     else {
-        Write-Host "PNG_FAST_MODE batch rendering all pages..."
+        $Workers = [Math]::Max(1, [Math]::Min($Workers, $pageCount))
+        Write-Host ("PNG_FAST_MODE parallel rendering with " + $Workers + " workers...")
         $prefix = Join-Path $PagesDir "page"
-        & pdftoppm -r $Resolution -png $SourcePdf $prefix
 
-        if ($LASTEXITCODE -ne 0) {
-            throw "pdftoppm failed with exit code: $LASTEXITCODE"
+        if ($Workers -eq 1) {
+            & pdftoppm -r $Resolution -png $SourcePdf $prefix
+
+            if ($LASTEXITCODE -ne 0) {
+                throw "pdftoppm failed with exit code: $LASTEXITCODE"
+            }
+        }
+        else {
+            $processes = New-Object System.Collections.Generic.List[object]
+            $chunkSize = [Math]::Ceiling($pageCount / $Workers)
+
+            for ($worker = 0; $worker -lt $Workers; $worker += 1) {
+                $startPage = [int]($worker * $chunkSize + 1)
+                $endPage = [int]([Math]::Min(($worker + 1) * $chunkSize, $pageCount))
+                if ($startPage -gt $pageCount) {
+                    continue
+                }
+
+                Write-Host ("PNG_RANGE " + $startPage + "-" + $endPage + "/" + $pageCount)
+
+                $arguments = @("-f", $startPage, "-l", $endPage, "-r", $Resolution, "-png", $SourcePdf, $prefix)
+                $process = Start-Process -FilePath "pdftoppm" -ArgumentList $arguments -PassThru -WindowStyle Hidden
+                [void]$processes.Add($process)
+            }
+
+            $lastCount = -1
+            while (@($processes | Where-Object { -not $_.HasExited }).Count -gt 0) {
+                $currentCount = @(Get-ChildItem -LiteralPath $PagesDir -Filter "*.png" -ErrorAction SilentlyContinue).Count
+                if ($currentCount -ne $lastCount) {
+                    Write-Host ("PNG_PAGE " + [Math]::Min($currentCount, $pageCount) + "/" + $pageCount)
+                    $lastCount = $currentCount
+                }
+                Start-Sleep -Seconds 2
+            }
+
+            $currentCount = @(Get-ChildItem -LiteralPath $PagesDir -Filter "*.png" -ErrorAction SilentlyContinue).Count
+            Write-Host ("PNG_PAGE " + [Math]::Min($currentCount, $pageCount) + "/" + $pageCount)
+
+            foreach ($process in $processes) {
+                $process.WaitForExit()
+                if ($process.ExitCode -ne 0) {
+                    throw "pdftoppm failed with exit code: $($process.ExitCode)"
+                }
+                $process.Dispose()
+            }
         }
     }
 
-    $pages = Get-ChildItem -LiteralPath $PagesDir -Filter "*.png" |
+    $pages = @(Get-ChildItem -LiteralPath $PagesDir -Filter "*.png" |
         Sort-Object {
             if ($_.BaseName -match "(\d+)$") { [int]$Matches[1] } else { 0 }
-        }
+        })
 
     if ($pages.Count -eq 0) {
         throw "No PNG pages were created."
@@ -257,24 +346,22 @@ function Convert-PdfToPngPages {
 function Merge-PngPagesToPdf {
     param(
         [string[]]$PngFiles,
-        [string]$TargetPdf
+        [string]$TargetPdf,
+        [string]$WorkDirectory
     )
 
     Write-Host "[3/5] Merging PNG pages into image-only PDF..."
 
     $python = Get-PythonCommand
-    if ($python) {
-        & $python -m img2pdf --output $TargetPdf @PngFiles
+    if (-not $python) {
+        throw "Python was not found. Install Python and img2pdf, then rerun the tool."
     }
-    elseif (Test-Command "img2pdf") {
-        & img2pdf --output $TargetPdf @PngFiles
-    }
-    elseif (Test-Command "magick") {
-        & magick @PngFiles $TargetPdf
-    }
-    else {
-        throw "img2pdf or ImageMagick was not found. Install img2pdf for lossless PNG-to-PDF merging."
-    }
+
+    $listPath = Join-Path $WorkDirectory "png-pages.txt"
+    [System.IO.File]::WriteAllLines($listPath, $PngFiles, [System.Text.UTF8Encoding]::new($false))
+
+    $script = Join-Path $PSScriptRoot "tools\merge-png-pdf.py"
+    & $python $script --list $listPath --output $TargetPdf
 
     if ($LASTEXITCODE -ne 0) {
         throw "PNG-to-PDF merge failed with exit code: $LASTEXITCODE"
@@ -394,7 +481,9 @@ if ($finalFolder -and -not (Test-Path -LiteralPath $finalFolder)) {
     New-Item -ItemType Directory -Path $finalFolder | Out-Null
 }
 
-Require-Command "pdftoppm" "Install Poppler for Windows and add its bin folder to PATH."
+if ($RenderEngine -eq "poppler") {
+    Require-Command "pdftoppm" "Install Poppler for Windows and add its bin folder to PATH."
+}
 Require-Command "tesseract" "Install Tesseract OCR and the required language packs."
 Require-TesseractLanguages $Language
 Require-PythonModule "ocrmypdf" "Install OCRmyPDF with install-python-packages.ps1."
@@ -431,9 +520,9 @@ try {
         Copy-Item -LiteralPath $sourceTaggedPdf -Destination $taggedPdf -Force
     }
 
-    $pngPages = Convert-PdfToPngPages -SourcePdf $taggedPdf -PagesDir $pagesDir -Resolution $Dpi
+    $pngPages = @(Convert-PdfToPngPages -SourcePdf $taggedPdf -PagesDir $pagesDir -Resolution $Dpi -Engine $RenderEngine -Workers $RenderWorkers)
     Write-Host ("OCR_TOTAL_PAGES " + $pngPages.Count)
-    Merge-PngPagesToPdf -PngFiles $pngPages -TargetPdf $imagePdf
+    Merge-PngPagesToPdf -PngFiles $pngPages -TargetPdf $imagePdf -WorkDirectory $WorkDir
     Invoke-Ocr -SourcePdf $imagePdf -TargetPdf $ocrPdf -OcrLanguage $Language
     Restore-Bookmarks -TaggedPdf $taggedPdf -OcrPdf $ocrPdf -FinalPdf $finalPdf
 

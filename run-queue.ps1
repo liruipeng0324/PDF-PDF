@@ -24,7 +24,10 @@ param(
     [switch]$KeepWork,
     [switch]$DetailedPngProgress,
     [switch]$Recurse,
-    [switch]$SkipExisting
+    [switch]$SkipExisting,
+
+    [ValidateSet("pdfium", "poppler")]
+    [string]$RenderEngine = "pdfium"
 )
 
 Set-StrictMode -Version Latest
@@ -93,6 +96,19 @@ function New-QueueItem {
         OutputPath = $OutputPath
         Type = $Type
     }
+}
+
+function Join-ProcessArguments {
+    param([string[]]$Arguments)
+
+    return ($Arguments | ForEach-Object {
+        if ($_ -match '[\s"]') {
+            '"' + ($_ -replace '"', '\"') + '"'
+        }
+        else {
+            $_
+        }
+    }) -join " "
 }
 
 function Read-QueueCsv {
@@ -164,9 +180,7 @@ function Invoke-QueueChild {
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = "powershell"
-    foreach ($argument in $Arguments) {
-        [void]$psi.ArgumentList.Add($argument)
-    }
+    $psi.Arguments = Join-ProcessArguments $Arguments
     $psi.WorkingDirectory = $PSScriptRoot
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
@@ -247,12 +261,12 @@ $skipFile = Join-Path $controlDir "skip-next.flag"
 New-Item -ItemType Directory -Path $controlDir -Force | Out-Null
 Remove-Item -LiteralPath $pauseFile, $skipFile -Force -ErrorAction SilentlyContinue
 
-$queue = if ($QueueCsv) {
+$queue = @(if ($QueueCsv) {
     @(Read-QueueCsv -Path $QueueCsv -TargetDir $outputRoot)
 }
 else {
     @(Read-QueueDirectory -Path $InputDir -TargetDir $outputRoot -PreferredType $InputType -Recursive:$Recurse)
-}
+})
 
 if ($queue.Count -eq 0) {
     throw "Queue is empty."
@@ -294,7 +308,8 @@ foreach ($item in $queue) {
                 "-File", (Join-Path $PSScriptRoot "make-dual-pdf.ps1"),
                 "-OutputPath", $item.OutputPath,
                 "-Language", $Language,
-                "-Dpi", $Dpi
+                "-Dpi", $Dpi,
+                "-RenderEngine", $RenderEngine
             )
 
             if ($item.Type -eq "word") {

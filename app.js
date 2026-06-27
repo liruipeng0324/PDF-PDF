@@ -129,6 +129,7 @@ function buildPayload() {
     sourcePath: fields.sourcePath.value,
     outputPath: fields.outputPath.value,
     ocrMode: fields.ocrMode.value,
+    renderEngine: "pdfium",
     language: fields.language.value,
     dpi: Number(fields.dpi.value),
     deskew: fields.deskew.checked,
