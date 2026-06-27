@@ -128,15 +128,15 @@ function buildPayload() {
     inputType: isWord ? "word" : "pdf",
     sourcePath: fields.sourcePath.value,
     outputPath: fields.outputPath.value,
-    ocrMode: fields.ocrMode.value,
+    ocrMode: "standard",
     renderEngine: "pdfium",
     language: fields.language.value,
-    dpi: Number(fields.dpi.value),
+    dpi: 300,
     deskew: fields.deskew.checked,
     rotatePages: fields.rotatePages.checked,
-    optimize: fields.optimize.checked,
-    keepWork: fields.keepWork.checked,
-    detailedPngProgress: fields.detailedPngProgress.checked,
+    optimize: true,
+    keepWork: false,
+    detailedPngProgress: false,
     recurse: fields.recurse.checked,
     skipExisting: fields.skipExisting.checked,
   };
@@ -281,14 +281,20 @@ fields.mode.addEventListener("change", updateLabels);
 fields.inputType.addEventListener("change", updateLabels);
 fields.ocrMode.addEventListener("change", () => {
   if (fields.ocrMode.value === "fast") {
-    fields.dpi.value = "200";
+    fields.dpi.value = "300";
     fields.deskew.checked = false;
     fields.rotatePages.checked = false;
+    fields.optimize.checked = true;
   }
   if (fields.ocrMode.value === "accurate") {
     fields.dpi.value = "300";
     fields.deskew.checked = true;
     fields.rotatePages.checked = true;
+    fields.optimize.checked = true;
+  }
+  if (fields.ocrMode.value === "standard") {
+    fields.dpi.value = "300";
+    fields.optimize.checked = true;
   }
 });
 pickSource.addEventListener("click", () => openSystemPicker("source"));
@@ -337,5 +343,7 @@ showRecent.addEventListener("click", async () => {
 });
 
 updateLabels();
+fields.dpi.value = "300";
+fields.optimize.checked = true;
 renderProgress(0, "尚未开始");
 loadToolChecks();

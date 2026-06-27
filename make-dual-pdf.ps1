@@ -26,6 +26,12 @@ param(
     [ValidateSet("pdfium", "poppler")]
     [string]$RenderEngine = "pdfium",
 
+    [ValidateSet("jpeg")]
+    [string]$ImageFormat = "jpeg",
+
+    [ValidateRange(1, 100)]
+    [int]$JpegQuality = 50,
+
     [ValidateRange(1, 16)]
     [int]$RenderWorkers = 4
 )
@@ -227,10 +233,12 @@ function Convert-PdfToPngPages {
         [string]$PagesDir,
         [int]$Resolution,
         [string]$Engine = "pdfium",
+        [string]$Format = "jpeg",
+        [int]$Quality = 75,
         [int]$Workers = 4
     )
 
-    Write-Host "[2/5] Rendering PDF pages to PNG..."
+    Write-Host "[2/5] Rendering PDF pages to images..."
     New-CleanDirectory -Path $PagesDir
 
     $python = Get-PythonCommand
@@ -244,14 +252,15 @@ function Convert-PdfToPngPages {
     }
 
     $pageCount = [int]($pageCountText | Select-Object -First 1)
-    Write-Host ("PNG_TOTAL_PAGES " + $pageCount)
+    Write-Host ("IMAGE_TOTAL_PAGES " + $pageCount)
 
     if ($Engine -eq "pdfium") {
         Require-PythonImport "pypdfium2" "Install pypdfium2 with install-python-packages.ps1."
 
         $Workers = [Math]::Max(1, [Math]::Min($Workers, $pageCount))
-        Write-Host ("PNG_ENGINE pdfium")
-        Write-Host ("PNG_FAST_MODE pdfium parallel rendering with " + $Workers + " workers...")
+        Write-Host ("IMAGE_ENGINE pdfium")
+        Write-Host ("IMAGE_FORMAT " + $Format)
+        Write-Host ("IMAGE_FAST_MODE pdfium parallel rendering with " + $Workers + " workers...")
 
         $script = Join-Path $PSScriptRoot "tools\render-pdfium-pages.py"
         $arguments = @(
@@ -259,7 +268,9 @@ function Convert-PdfToPngPages {
             "--input", $SourcePdf,
             "--output-dir", $PagesDir,
             "--dpi", $Resolution,
-            "--workers", $Workers
+            "--workers", $Workers,
+            "--format", $Format,
+            "--jpeg-quality", $Quality
         )
 
         & $python @arguments 2>&1 | ForEach-Object { Write-Host $_ }
@@ -269,9 +280,9 @@ function Convert-PdfToPngPages {
     }
     elseif ($DetailedPngProgress) {
         for ($page = 1; $page -le $pageCount; $page += 1) {
-            Write-Host ("PNG_PAGE " + $page + "/" + $pageCount)
+            Write-Host ("IMAGE_PAGE " + $page + "/" + $pageCount)
             $prefix = Join-Path $PagesDir ("page-" + ("{0:D6}" -f $page))
-            & pdftoppm -f $page -l $page -r $Resolution -png $SourcePdf $prefix
+            & pdftoppm -f $page -l $page -r $Resolution -jpeg -jpegopt ("quality=" + $Quality) $SourcePdf $prefix
 
             if ($LASTEXITCODE -ne 0) {
                 throw "pdftoppm failed on page $page with exit code: $LASTEXITCODE"
@@ -280,11 +291,11 @@ function Convert-PdfToPngPages {
     }
     else {
         $Workers = [Math]::Max(1, [Math]::Min($Workers, $pageCount))
-        Write-Host ("PNG_FAST_MODE parallel rendering with " + $Workers + " workers...")
+        Write-Host ("IMAGE_FAST_MODE parallel rendering with " + $Workers + " workers...")
         $prefix = Join-Path $PagesDir "page"
 
         if ($Workers -eq 1) {
-            & pdftoppm -r $Resolution -png $SourcePdf $prefix
+            & pdftoppm -r $Resolution -jpeg -jpegopt ("quality=" + $Quality) $SourcePdf $prefix
 
             if ($LASTEXITCODE -ne 0) {
                 throw "pdftoppm failed with exit code: $LASTEXITCODE"
@@ -301,25 +312,25 @@ function Convert-PdfToPngPages {
                     continue
                 }
 
-                Write-Host ("PNG_RANGE " + $startPage + "-" + $endPage + "/" + $pageCount)
+                Write-Host ("IMAGE_RANGE " + $startPage + "-" + $endPage + "/" + $pageCount)
 
-                $arguments = @("-f", $startPage, "-l", $endPage, "-r", $Resolution, "-png", $SourcePdf, $prefix)
+                $arguments = @("-f", $startPage, "-l", $endPage, "-r", $Resolution, "-jpeg", "-jpegopt", ("quality=" + $Quality), $SourcePdf, $prefix)
                 $process = Start-Process -FilePath "pdftoppm" -ArgumentList $arguments -PassThru -WindowStyle Hidden
                 [void]$processes.Add($process)
             }
 
             $lastCount = -1
             while (@($processes | Where-Object { -not $_.HasExited }).Count -gt 0) {
-                $currentCount = @(Get-ChildItem -LiteralPath $PagesDir -Filter "*.png" -ErrorAction SilentlyContinue).Count
+                $currentCount = @(Get-ChildItem -LiteralPath $PagesDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension.ToLowerInvariant() -in @(".jpg", ".jpeg") }).Count
                 if ($currentCount -ne $lastCount) {
-                    Write-Host ("PNG_PAGE " + [Math]::Min($currentCount, $pageCount) + "/" + $pageCount)
+                    Write-Host ("IMAGE_PAGE " + [Math]::Min($currentCount, $pageCount) + "/" + $pageCount)
                     $lastCount = $currentCount
                 }
                 Start-Sleep -Seconds 2
             }
 
-            $currentCount = @(Get-ChildItem -LiteralPath $PagesDir -Filter "*.png" -ErrorAction SilentlyContinue).Count
-            Write-Host ("PNG_PAGE " + [Math]::Min($currentCount, $pageCount) + "/" + $pageCount)
+            $currentCount = @(Get-ChildItem -LiteralPath $PagesDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension.ToLowerInvariant() -in @(".jpg", ".jpeg") }).Count
+            Write-Host ("IMAGE_PAGE " + [Math]::Min($currentCount, $pageCount) + "/" + $pageCount)
 
             foreach ($process in $processes) {
                 $process.WaitForExit()
@@ -331,13 +342,14 @@ function Convert-PdfToPngPages {
         }
     }
 
-    $pages = @(Get-ChildItem -LiteralPath $PagesDir -Filter "*.png" |
+    $pages = @(Get-ChildItem -LiteralPath $PagesDir -File |
+        Where-Object { $_.Extension.ToLowerInvariant() -in @(".jpg", ".jpeg") } |
         Sort-Object {
             if ($_.BaseName -match "(\d+)$") { [int]$Matches[1] } else { 0 }
         })
 
     if ($pages.Count -eq 0) {
-        throw "No PNG pages were created."
+        throw "No JPG pages were created."
     }
 
     return @($pages.FullName)
@@ -345,26 +357,27 @@ function Convert-PdfToPngPages {
 
 function Merge-PngPagesToPdf {
     param(
-        [string[]]$PngFiles,
+        [string[]]$ImageFiles,
+        [string]$SourcePdf,
         [string]$TargetPdf,
         [string]$WorkDirectory
     )
 
-    Write-Host "[3/5] Merging PNG pages into image-only PDF..."
+    Write-Host "[3/5] Merging rendered pages into image-only PDF..."
 
     $python = Get-PythonCommand
     if (-not $python) {
         throw "Python was not found. Install Python and img2pdf, then rerun the tool."
     }
 
-    $listPath = Join-Path $WorkDirectory "png-pages.txt"
-    [System.IO.File]::WriteAllLines($listPath, $PngFiles, [System.Text.UTF8Encoding]::new($false))
+    $listPath = Join-Path $WorkDirectory "image-pages.txt"
+    [System.IO.File]::WriteAllLines($listPath, $ImageFiles, [System.Text.UTF8Encoding]::new($false))
 
     $script = Join-Path $PSScriptRoot "tools\merge-png-pdf.py"
-    & $python $script --list $listPath --output $TargetPdf
+    & $python $script --list $listPath --source-pdf $SourcePdf --output $TargetPdf
 
     if ($LASTEXITCODE -ne 0) {
-        throw "PNG-to-PDF merge failed with exit code: $LASTEXITCODE"
+        throw "Image-to-PDF merge failed with exit code: $LASTEXITCODE"
     }
 }
 
@@ -377,9 +390,10 @@ function Invoke-Ocr {
 
     Write-Host "[4/5] Running OCR and creating hidden text layer..."
 
+    $outputType = if ($Optimize) { "pdfa" } else { "pdf" }
     $arguments = @(
         "--language", $OcrLanguage,
-        "--output-type", "pdf",
+        "--output-type", $outputType,
         "--force-ocr"
     )
 
@@ -392,7 +406,12 @@ function Invoke-Ocr {
     }
 
     if ($Optimize) {
-        $arguments += @("--optimize", "1")
+        $arguments += @(
+            "--optimize", "1",
+            "--pdfa-image-compression", "jpeg",
+            "--ghostscript-jpeg-quality", "50",
+            "--fast-web-view", "0"
+        )
     }
 
     $arguments += @($SourcePdf, $TargetPdf)
@@ -510,6 +529,7 @@ $taggedPdf = Join-Path $WorkDir "01-word-tagged.pdf"
 $pagesDir = Join-Path $WorkDir "02-pages"
 $imagePdf = Join-Path $WorkDir "03-image-only.pdf"
 $ocrPdf = Join-Path $WorkDir "04-ocr.pdf"
+$renderImageFormat = $ImageFormat
 
 try {
     if ($sourceWord) {
@@ -520,9 +540,9 @@ try {
         Copy-Item -LiteralPath $sourceTaggedPdf -Destination $taggedPdf -Force
     }
 
-    $pngPages = @(Convert-PdfToPngPages -SourcePdf $taggedPdf -PagesDir $pagesDir -Resolution $Dpi -Engine $RenderEngine -Workers $RenderWorkers)
-    Write-Host ("OCR_TOTAL_PAGES " + $pngPages.Count)
-    Merge-PngPagesToPdf -PngFiles $pngPages -TargetPdf $imagePdf -WorkDirectory $WorkDir
+    $imagePages = @(Convert-PdfToPngPages -SourcePdf $taggedPdf -PagesDir $pagesDir -Resolution $Dpi -Engine $RenderEngine -Format $renderImageFormat -Quality $JpegQuality -Workers $RenderWorkers)
+    Write-Host ("OCR_TOTAL_PAGES " + $imagePages.Count)
+    Merge-PngPagesToPdf -ImageFiles $imagePages -SourcePdf $taggedPdf -TargetPdf $imagePdf -WorkDirectory $WorkDir
     Invoke-Ocr -SourcePdf $imagePdf -TargetPdf $ocrPdf -OcrLanguage $Language
     Restore-Bookmarks -TaggedPdf $taggedPdf -OcrPdf $ocrPdf -FinalPdf $finalPdf
 

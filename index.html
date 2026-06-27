@@ -54,7 +54,7 @@
               <button type="button" id="pickOutput">选择目录</button>
             </div>
 
-            <label>
+            <label hidden>
               <span>OCR 模式</span>
               <select id="ocrMode" name="ocrMode">
                 <option value="standard">标准模式</option>
@@ -74,22 +74,19 @@
               </select>
             </label>
 
-            <label>
+            <label hidden>
               <span>图片分辨率</span>
               <select id="dpi" name="dpi">
                 <option value="300">300 DPI</option>
-                <option value="240">240 DPI</option>
-                <option value="200">200 DPI</option>
-                <option value="400">400 DPI</option>
               </select>
             </label>
 
-            <div class="toggles" aria-label="处理选项">
+            <div class="toggles compact-options" aria-label="处理选项">
               <label><input id="deskew" type="checkbox" checked> 页面纠偏</label>
               <label><input id="rotatePages" type="checkbox" checked> 自动旋转</label>
-              <label><input id="optimize" type="checkbox"> 轻度优化</label>
-              <label><input id="keepWork" type="checkbox"> 保留中间文件</label>
-              <label><input id="detailedPngProgress" type="checkbox"> 显示 PNG 每页进度</label>
+              <label hidden><input id="optimize" type="checkbox" checked> 压缩优化</label>
+              <label hidden><input id="keepWork" type="checkbox"> 保留中间文件</label>
+              <label hidden><input id="detailedPngProgress" type="checkbox"> 显示图片每页进度</label>
               <label><input id="recurse" type="checkbox"> 包含子文件夹</label>
               <label><input id="skipExisting" type="checkbox" checked> 跳过已存在输出</label>
             </div>
@@ -128,6 +125,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=20260626-native-picker"></script>
+    <script src="app.js?v=20260627-300dpi-compression"></script>
   </body>
 </html>

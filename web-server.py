@@ -34,8 +34,8 @@ QUEUE_START_RE = re.compile(r"\[(\d+)/(\d+)\]\s+START\s+(.*)")
 QUEUE_END_RE = re.compile(r"\[(\d+)/(\d+)\]\s+(OK|FAIL|SKIP)\s+(.*)")
 OCR_TOTAL_RE = re.compile(r"OCR_TOTAL_PAGES\s+(\d+)")
 OCR_PAGE_RE = re.compile(r"(?:page|Page|OCR).*?(\d+)\s*/\s*(\d+)|(?:page|Page)\s+(\d+)")
-PNG_TOTAL_RE = re.compile(r"PNG_TOTAL_PAGES\s+(\d+)")
-PNG_PAGE_RE = re.compile(r"PNG_PAGE\s+(\d+)\s*/\s*(\d+)")
+PNG_TOTAL_RE = re.compile(r"(?:PNG|IMAGE)_TOTAL_PAGES\s+(\d+)")
+PNG_PAGE_RE = re.compile(r"(?:PNG|IMAGE)_PAGE\s+(\d+)\s*/\s*(\d+)")
 
 
 def json_response(handler: SimpleHTTPRequestHandler, status: int, payload: dict) -> None:
@@ -166,8 +166,9 @@ def explain_error(log: str) -> str:
         ("does not have language data", "OCR 语言包缺失。常见原因是缺少 chi_sim.traineddata。"),
         ("Can't open hocr", "Tesseract 配置文件不完整。请确认 tools\\tessdata 里有 configs、tessconfigs、pdf.ttf。"),
         ("Word PDF export failed", "Word 导出 PDF 失败。请确认电脑已安装 Microsoft Word，并且当前桌面会话能正常打开 Word。"),
-        ("No PNG pages were created", "PDF 转图片没有生成页面。请确认源 PDF 能正常打开，且 Poppler 可用。"),
-        ("pdftoppm failed", "PDF 转 PNG 失败。请尝试降低 DPI，或检查 PDF 是否损坏/加密。"),
+        ("No JPG pages were created", "PDF 转 JPG 没有生成页面。请确认源 PDF 能正常打开。"),
+        ("No PNG pages were created", "PDF 转图片没有生成页面。请确认源 PDF 能正常打开。"),
+        ("pdftoppm failed", "PDF 转 JPG 失败。请检查 PDF 是否损坏/加密。"),
         ("OCRmyPDF failed", "OCR 阶段失败。请查看日志末尾，通常与 OCR 语言包、PDF 图片或权限有关。"),
         ("Access is denied", "路径没有写入权限，或目标 PDF 正被其他程序打开。"),
         ("Permission denied", "路径没有写入权限，或目标 PDF 正被其他程序打开。"),
@@ -287,7 +288,7 @@ def update_progress(job: dict, line: str) -> None:
         job["pngCurrentPage"] = min(current_page, total_pages)
         job["pngTotalPages"] = total_pages
         update_page_progress(job, 0.20, 0.20, job["pngCurrentPage"], total_pages)
-        job["progressText"] = f"PNG 正在转换第 {job['pngCurrentPage']} / {total_pages} 页"
+        job["progressText"] = f"图片正在转换第 {job['pngCurrentPage']} / {total_pages} 页"
         return
 
     total_match = OCR_TOTAL_RE.search(line)
@@ -335,9 +336,9 @@ def update_progress(job: dict, line: str) -> None:
             total_pages = job["pngTotalPages"]
             current_page = job.get("pngCurrentPage", 0)
             job["progressText"] = (
-                f"PNG 正在转换第 {current_page} / {total_pages} 页"
+                f"图片正在转换第 {current_page} / {total_pages} 页"
                 if current_page
-                else f"PNG 正在转换，共 {total_pages} 页"
+                else f"图片正在转换，共 {total_pages} 页"
             )
     else:
         progress = min(99, max(1, int((current / total) * 100)))
