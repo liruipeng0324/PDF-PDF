@@ -30,7 +30,7 @@ param(
     [string]$ImageFormat = "jpeg",
 
     [ValidateRange(1, 100)]
-    [int]$JpegQuality = 50,
+    [int]$JpegQuality = 90,
 
     [ValidateRange(1, 16)]
     [int]$RenderWorkers = 4
@@ -394,7 +394,9 @@ function Invoke-Ocr {
     $arguments = @(
         "--language", $OcrLanguage,
         "--output-type", $outputType,
-        "--force-ocr"
+        "--force-ocr",
+        "--oversample", "300",
+        "--tesseract-thresholding", "adaptive-otsu"
     )
 
     if ($Deskew) {
@@ -408,8 +410,9 @@ function Invoke-Ocr {
     if ($Optimize) {
         $arguments += @(
             "--optimize", "1",
+            "--jpeg-quality", "65",
             "--pdfa-image-compression", "jpeg",
-            "--ghostscript-jpeg-quality", "50",
+            "--ghostscript-jpeg-quality", "65",
             "--fast-web-view", "0"
         )
     }
