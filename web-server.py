@@ -368,7 +368,7 @@ def mode_flags(payload: dict) -> tuple[bool, bool, bool, bool]:
     detailed = bool(payload.get("detailedPngProgress"))
     if mode == "fast":
         return False, False, False, detailed
-    if mode == "accurate":
+    if mode in ("accurate", "enhanced"):
         return True, True, bool(payload.get("optimize")), detailed
     return bool(payload.get("deskew")), bool(payload.get("rotatePages")), bool(payload.get("optimize")), detailed
 
@@ -404,6 +404,7 @@ def build_command(payload: dict) -> list[str]:
         command += ["-InputType", payload.get("inputType", "pdf")]
 
     command += ["-Language", language, "-Dpi", dpi]
+    command += ["-OcrProfile", "enhanced" if payload.get("ocrMode") == "enhanced" else "standard"]
     command += ["-RenderEngine", render_engine]
     command += switch_arg(deskew, "-Deskew")
     command += switch_arg(rotate_pages, "-RotatePages")

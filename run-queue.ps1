@@ -18,6 +18,9 @@ param(
     [ValidateRange(72, 600)]
     [int]$Dpi = 300,
 
+    [ValidateSet("standard", "enhanced")]
+    [string]$OcrProfile = "standard",
+
     [switch]$Deskew,
     [switch]$RotatePages,
     [switch]$Optimize,
@@ -309,6 +312,7 @@ foreach ($item in $queue) {
                 "-OutputPath", $item.OutputPath,
                 "-Language", $Language,
                 "-Dpi", $Dpi,
+                "-OcrProfile", $OcrProfile,
                 "-RenderEngine", $RenderEngine
             )
 

@@ -128,7 +128,7 @@ function buildPayload() {
     inputType: isWord ? "word" : "pdf",
     sourcePath: fields.sourcePath.value,
     outputPath: fields.outputPath.value,
-    ocrMode: "standard",
+    ocrMode: fields.ocrMode.value,
     renderEngine: "pdfium",
     language: fields.language.value,
     dpi: 300,
@@ -280,13 +280,7 @@ async function openPath(path) {
 fields.mode.addEventListener("change", updateLabels);
 fields.inputType.addEventListener("change", updateLabels);
 fields.ocrMode.addEventListener("change", () => {
-  if (fields.ocrMode.value === "fast") {
-    fields.dpi.value = "300";
-    fields.deskew.checked = false;
-    fields.rotatePages.checked = false;
-    fields.optimize.checked = true;
-  }
-  if (fields.ocrMode.value === "accurate") {
+  if (fields.ocrMode.value === "enhanced") {
     fields.dpi.value = "300";
     fields.deskew.checked = true;
     fields.rotatePages.checked = true;
@@ -343,6 +337,7 @@ showRecent.addEventListener("click", async () => {
 });
 
 updateLabels();
+fields.ocrMode.value = "enhanced";
 fields.dpi.value = "300";
 fields.optimize.checked = true;
 renderProgress(0, "尚未开始");

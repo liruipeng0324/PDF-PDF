@@ -15,6 +15,9 @@ param(
     [ValidateRange(72, 600)]
     [int]$Dpi = 300,
 
+    [ValidateSet("standard", "enhanced")]
+    [string]$OcrProfile = "standard",
+
     [string]$WorkDir = "",
 
     [switch]$Deskew,
@@ -391,13 +394,22 @@ function Invoke-Ocr {
     Write-Host "[4/5] Running OCR and creating hidden text layer..."
 
     $outputType = if ($Optimize) { "pdfa" } else { "pdf" }
+    $ocrOversample = if ($OcrProfile -eq "enhanced") { "400" } else { "300" }
     $arguments = @(
         "--language", $OcrLanguage,
         "--output-type", $outputType,
         "--force-ocr",
-        "--oversample", "300",
+        "--oversample", $ocrOversample,
         "--tesseract-thresholding", "adaptive-otsu"
     )
+
+    if ($OcrProfile -eq "enhanced") {
+        Write-Host "OCR_PROFILE enhanced certificate/table recognition"
+        $arguments += @("--tesseract-pagesegmode", "11")
+    }
+    else {
+        Write-Host "OCR_PROFILE standard"
+    }
 
     if ($Deskew) {
         $arguments += "--deskew"
