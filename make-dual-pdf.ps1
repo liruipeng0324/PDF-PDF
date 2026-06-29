@@ -410,9 +410,9 @@ function Invoke-Ocr {
     if ($Optimize) {
         $arguments += @(
             "--optimize", "1",
-            "--jpeg-quality", "65",
+            "--jpeg-quality", "75",
             "--pdfa-image-compression", "jpeg",
-            "--ghostscript-jpeg-quality", "65",
+            "--ghostscript-jpeg-quality", "75",
             "--fast-web-view", "0"
         )
     }
