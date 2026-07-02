@@ -32,7 +32,6 @@ Get-ChildItem -Path $root -Recurse -Directory -Filter "__pycache__" -ErrorAction
 if ($RemoveInstallers) {
     $fileTargets = @(
         "python-3.13.14-amd64.exe",
-        "tesseract-ocr-w64-setup-5.4.0.20240606.exe",
         "gs10071w64.exe"
     )
 

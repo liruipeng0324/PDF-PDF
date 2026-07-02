@@ -3,12 +3,9 @@ const fields = {
   inputType: document.querySelector("#inputType"),
   sourcePath: document.querySelector("#sourcePath"),
   outputPath: document.querySelector("#outputPath"),
-  ocrMode: document.querySelector("#ocrMode"),
-  language: document.querySelector("#language"),
   dpi: document.querySelector("#dpi"),
-  deskew: document.querySelector("#deskew"),
-  rotatePages: document.querySelector("#rotatePages"),
   optimize: document.querySelector("#optimize"),
+  acrobatDoubleLayer: document.querySelector("#acrobatDoubleLayer"),
   keepWork: document.querySelector("#keepWork"),
   detailedPngProgress: document.querySelector("#detailedPngProgress"),
   recurse: document.querySelector("#recurse"),
@@ -38,35 +35,45 @@ const openOutput = document.querySelector("#openOutput");
 const openLogDir = document.querySelector("#openLogDir");
 const friendlyError = document.querySelector("#friendlyError");
 
-let pollTimer = null;
 let currentJobId = "";
+let pollTimer = null;
+let selectedSourcePaths = [];
 let lastOutputs = {};
+const outputPathCacheKey = "dualPdfOutputPath";
 
-function modeInfo() {
-  return {
-    mode: fields.mode.value,
-    isWord: fields.inputType.value === "word",
-  };
-}
-
-function updateLabels() {
-  const { mode, isWord } = modeInfo();
-  sourceLabel.textContent = mode === "queue-dir"
-    ? "输入文件夹"
-    : mode === "queue-csv"
-      ? "队列 CSV"
-      : isWord
-        ? "Word 文件"
-        : "带书签 PDF";
-  outputLabel.textContent = "输出文件夹";
-  fields.sourcePath.placeholder = "点击选择输入";
-  fields.outputPath.placeholder = "点击选择输出目录";
-}
+const modeInfo = {
+  single: {
+    sourceLabel: "\u8f93\u5165\u6587\u4ef6",
+    outputLabel: "\u8f93\u51fa\u6587\u4ef6\u5939",
+    sourceButton: "\u9009\u62e9\u6587\u4ef6",
+    outputButton: "\u9009\u62e9\u76ee\u5f55",
+    sourcePlaceholder: "\u70b9\u51fb\u9009\u62e9 Word \u6216 PDF \u6587\u4ef6",
+    outputPlaceholder: "\u70b9\u51fb\u9009\u62e9\u8f93\u51fa\u76ee\u5f55",
+  },
+  "queue-dir": {
+    sourceLabel: "\u8f93\u5165\u6587\u4ef6",
+    outputLabel: "\u8f93\u51fa\u6587\u4ef6\u5939",
+    sourceButton: "\u9009\u62e9\u591a\u4e2a\u6587\u4ef6",
+    outputButton: "\u9009\u62e9\u76ee\u5f55",
+    sourcePlaceholder: "\u70b9\u51fb\u9009\u62e9\u591a\u4e2a Word/PDF \u6587\u4ef6",
+    outputPlaceholder: "\u70b9\u51fb\u9009\u62e9\u8f93\u51fa\u76ee\u5f55",
+  },
+  "queue-csv": {
+    sourceLabel: "\u961f\u5217\u8868\u683c",
+    outputLabel: "\u8f93\u51fa\u6587\u4ef6\u5939",
+    sourceButton: "\u9009\u62e9 CSV",
+    outputButton: "\u9009\u62e9\u76ee\u5f55",
+    sourcePlaceholder: "\u70b9\u51fb\u9009\u62e9\u961f\u5217 CSV",
+    outputPlaceholder: "\u70b9\u51fb\u9009\u62e9\u8f93\u51fa\u76ee\u5f55",
+  },
+};
 
 async function apiGet(url) {
   const response = await fetch(url);
   const data = await response.json();
-  if (!data.ok) throw new Error(data.error || "请求失败。");
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || "请求失败");
+  }
   return data;
 }
 
@@ -77,182 +84,274 @@ async function apiPost(url, payload) {
     body: JSON.stringify(payload),
   });
   const data = await response.json();
-  if (!data.ok) throw new Error(data.error || "请求失败。");
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || "请求失败");
+  }
   return data;
 }
 
-function defaultOutputFile(folderPath) {
-  const source = fields.sourcePath.value || "final.pdf";
-  const normalized = source.replaceAll("\\", "/");
-  const filename = normalized.split("/").pop() || "final.pdf";
-  const stem = filename.replace(/\.[^.]+$/, "");
-  const separator = folderPath.endsWith("\\") ? "" : "\\";
-  return `${folderPath}${separator}${stem}-dual-layer.pdf`;
+function isQueueMode() {
+  return fields.mode.value !== "single";
 }
 
-function pickerFilter(target) {
-  const { mode, isWord } = modeInfo();
-  if (target === "output") return "所有文件 (*.*)|*.*";
-  if (mode === "queue-csv") return "CSV 队列 (*.csv)|*.csv|所有文件 (*.*)|*.*";
-  if (isWord) return "Word 文档 (*.doc;*.docx)|*.doc;*.docx|所有文件 (*.*)|*.*";
-  return "PDF 文件 (*.pdf)|*.pdf|所有文件 (*.*)|*.*";
+function updateLabels() {
+  const info = modeInfo[fields.mode.value] || modeInfo.single;
+  sourceLabel.textContent = info.sourceLabel;
+  outputLabel.textContent = info.outputLabel;
+  pickSource.textContent = info.sourceButton;
+  pickOutput.textContent = info.outputButton;
+  fields.sourcePath.placeholder = info.sourcePlaceholder;
+  fields.outputPath.placeholder = info.outputPlaceholder;
+  fields.recurse.closest("label").hidden = fields.mode.value !== "queue-dir";
+  fields.skipExisting.closest("label").hidden = !isQueueMode();
+  clearSourceSelection(false);
+}
+
+function clearSourceSelection(clearInput = true) {
+  selectedSourcePaths = [];
+  if (clearInput) {
+    fields.sourcePath.value = "";
+  }
+}
+
+function sourceFileFilter() {
+  if (fields.mode.value === "queue-csv") {
+    return "CSV files (*.csv)|*.csv|All files (*.*)|*.*";
+  }
+  if (fields.inputType.value === "word") {
+    return "Word files (*.doc;*.docx)|*.doc;*.docx|All files (*.*)|*.*";
+  }
+  if (fields.inputType.value === "pdf") {
+    return "PDF files (*.pdf)|*.pdf|All files (*.*)|*.*";
+  }
+  return "Word/PDF files (*.doc;*.docx;*.pdf)|*.doc;*.docx;*.pdf|All files (*.*)|*.*";
+}
+
+function filenameStem(sourcePath) {
+  if (!sourcePath) {
+    return "";
+  }
+  const slash = Math.max(sourcePath.lastIndexOf("\\"), sourcePath.lastIndexOf("/"));
+  const name = slash >= 0 ? sourcePath.slice(slash + 1) : sourcePath;
+  return name.replace(/\.[^.]+$/, "") || "output";
+}
+
+function joinPath(dir, filename) {
+  if (!dir) {
+    return filename;
+  }
+  const separator = dir.endsWith("\\") || dir.endsWith("/") ? "" : "\\";
+  return `${dir}${separator}${filename}`;
 }
 
 async function openSystemPicker(target) {
-  const { mode } = modeInfo();
-  const kind = target === "source" && mode !== "queue-dir" ? "file" : "dir";
-  const title = target === "source" ? "选择输入" : "选择输出目录";
+  const isSource = target === "source";
+  const multiFiles = isSource && fields.mode.value === "queue-dir";
+  const kind = isSource ? (multiFiles ? "files" : "file") : "dir";
+  const title = isSource
+    ? (multiFiles ? "\u9009\u62e9\u591a\u4e2a\u8f93\u5165\u6587\u4ef6\uff0c\u6309\u4f4f Ctrl \u6216 Shift \u591a\u9009" : "\u9009\u62e9\u8f93\u5165\u6587\u4ef6")
+    : "\u9009\u62e9\u8f93\u51fa\u6587\u4ef6\u5939";
+  const payload = {
+    kind,
+    target,
+    title,
+    initial: isSource ? fields.sourcePath.value : fields.outputPath.value,
+    filter: isSource ? sourceFileFilter() : "PDF files (*.pdf)|*.pdf|All files (*.*)|*.*",
+  };
+
+  const button = isSource ? pickSource : pickOutput;
+  button.disabled = true;
   try {
-    const data = await apiPost("/api/pick", {
-      kind,
-      title,
-      filter: pickerFilter(target),
-      initialPath: target === "source" ? fields.sourcePath.value : fields.outputPath.value,
-    });
-    if (!data.selected) return;
-    if (target === "source") {
-      fields.sourcePath.value = data.selected;
+    const data = await apiPost("/api/pick", payload);
+    const paths = data.selectedPaths || (data.selected ? [data.selected] : []);
+    if (!paths.length) {
+      return;
+    }
+
+    if (isSource) {
+      if (multiFiles) {
+        selectedSourcePaths = paths;
+        fields.sourcePath.value = `\u5df2\u9009\u62e9 ${paths.length} \u4e2a\u6587\u4ef6`;
+      } else {
+        selectedSourcePaths = [];
+        fields.sourcePath.value = paths[0];
+      }
     } else {
-      fields.outputPath.value = fields.mode.value === "single" ? defaultOutputFile(data.selected) : data.selected;
+      fields.outputPath.value = paths[0];
+      localStorage.setItem(outputPathCacheKey, paths[0]);
     }
   } catch (error) {
-    jobState.textContent = "文件资源管理器没有打开。";
     logBox.textContent = error.message;
+  } finally {
+    button.disabled = false;
   }
 }
 
 function buildPayload() {
-  const { mode, isWord } = modeInfo();
-  return {
-    mode,
-    inputType: isWord ? "word" : "pdf",
-    sourcePath: fields.sourcePath.value,
-    outputPath: fields.outputPath.value,
-    ocrMode: fields.ocrMode.value,
-    renderEngine: "pdfium",
-    language: fields.language.value,
-    dpi: 300,
-    deskew: fields.deskew.checked,
-    rotatePages: fields.rotatePages.checked,
-    optimize: true,
-    keepWork: false,
-    detailedPngProgress: false,
+  const sourcePath = fields.sourcePath.value.trim();
+  let outputPath = fields.outputPath.value.trim();
+  if (fields.mode.value === "single" && sourcePath && outputPath) {
+    outputPath = joinPath(outputPath, `${filenameStem(sourcePath)}-dual-layer.pdf`);
+  }
+
+  const payload = {
+    mode: fields.mode.value,
+    inputType: fields.inputType.value,
+    sourcePath,
+    outputPath,
+    dpi: Number(fields.dpi.value || 300),
+    optimize: fields.optimize.checked,
+    acrobatDoubleLayer: fields.acrobatDoubleLayer.checked,
+    acrobatOcrLanguage: "CHS",
+    keepWork: fields.keepWork.checked,
+    detailedPngProgress: fields.detailedPngProgress.checked,
     recurse: fields.recurse.checked,
     skipExisting: fields.skipExisting.checked,
   };
-}
 
-function outputHint(payload) {
-  if (payload.mode === "single") {
-    return `预计输出 PDF：${payload.outputPath}`;
+  if (fields.mode.value === "queue-dir") {
+    payload.sourcePaths = selectedSourcePaths.slice();
+    payload.sourcePath = selectedSourcePaths.length ? selectedSourcePaths[0] : "";
   }
-  return `预计输出文件夹：${payload.outputPath}\n队列日志：${payload.outputPath}\\_queue-logs`;
+  return payload;
 }
 
-function setBusy(isBusy) {
-  const isQueue = fields.mode.value !== "single";
-  startJob.disabled = isBusy;
-  cancelJob.disabled = !isBusy;
-  pauseJob.disabled = !isBusy || !isQueue;
-  resumeJob.disabled = !isBusy || !isQueue;
-  skipJob.disabled = !isBusy || !isQueue;
-  cleanCache.disabled = isBusy;
-  showRecent.disabled = isBusy;
+function validatePayload(payload) {
+  if (fields.mode.value === "queue-dir") {
+    if (!payload.sourcePaths.length) {
+      return "\u8bf7\u5148\u9009\u62e9\u4e00\u4e2a\u6216\u591a\u4e2a\u8f93\u5165\u6587\u4ef6\u3002";
+    }
+    if (!payload.outputPath) {
+      return "\u8bf7\u9009\u62e9\u8f93\u51fa\u6587\u4ef6\u5939\u3002";
+    }
+    return "";
+  }
+  if (!payload.sourcePath) {
+    return "\u8bf7\u9009\u62e9\u8f93\u5165\u6587\u4ef6\u3002";
+  }
+  if (!payload.outputPath) {
+    return "\u8bf7\u9009\u62e9\u8f93\u51fa\u6587\u4ef6\u5939\u3002";
+  }
+  return "";
+}
+
+function setBusy(running) {
+  startJob.disabled = running;
+  cancelJob.disabled = !running;
+  pauseJob.disabled = !running || fields.mode.value === "single";
+  resumeJob.disabled = !running || fields.mode.value === "single";
+  skipJob.disabled = !running || fields.mode.value === "single";
 }
 
 function renderProgress(value, text) {
-  const progress = Math.max(0, Math.min(100, Number(value) || 0));
+  const progress = Math.max(0, Math.min(100, Number(value || 0)));
   progressBar.style.width = `${progress}%`;
   progressPercent.textContent = `${progress}%`;
-  progressText.textContent = text || "等待开始";
+  progressText.textContent = text || "正在运行";
 }
 
-function renderOutputs(outputs) {
-  lastOutputs = outputs || {};
-  const hasOutput = Boolean(lastOutputs.outputPath || lastOutputs.outputDir || lastOutputs.summaryHint);
+function renderOutputs(outputs = {}) {
+  lastOutputs = outputs;
+  const hasOutput = Boolean(outputs.outputPath || outputs.outputDir || outputs.summaryHint);
   resultActions.hidden = !hasOutput;
-  openOutput.disabled = !Boolean(lastOutputs.outputPath || lastOutputs.outputDir);
-  openLogDir.disabled = !Boolean(lastOutputs.summaryHint);
+  openOutput.disabled = !(outputs.outputPath || outputs.outputDir);
+  openLogDir.disabled = !outputs.summaryHint;
 }
 
-async function pollJob(jobId) {
-  const data = await apiGet(`/api/job?id=${encodeURIComponent(jobId)}`);
-  const job = data.job;
-  jobState.textContent = `状态：${job.status}`;
-  renderProgress(job.progress || 0, job.progressText || "");
-  renderOutputs(job.outputs || {});
+function renderFriendlyError(message) {
+  friendlyError.hidden = !message;
+  friendlyError.textContent = message || "";
+}
 
-  const outputs = job.outputs || {};
-  const outputLines = [];
-  if (outputs.outputPath) outputLines.push(`输出 PDF：${outputs.outputPath}`);
-  if (outputs.outputDir) outputLines.push(`输出文件夹：${outputs.outputDir}`);
-  if (outputs.summaryHint) outputLines.push(`队列日志：${outputs.summaryHint}`);
-
-  const helperLines = [];
-  if (job.status === "running" && String(job.progressText || "").includes("OCR")) {
-    helperLines.push("OCR 正在执行。页数多、DPI 高、中文识别都会比较慢，请等待。");
+async function pollJob() {
+  if (!currentJobId) {
+    return;
   }
+  try {
+    const data = await apiGet(`/api/job?id=${encodeURIComponent(currentJobId)}`);
+    const job = data.job;
+    jobState.textContent = `状态：${job.status || "unknown"}`;
+    renderProgress(job.progress, job.progressText);
+    renderOutputs(job.outputs);
+    renderFriendlyError(job.friendlyError);
+    logBox.textContent = job.log || "";
+    logBox.scrollTop = logBox.scrollHeight;
 
-  friendlyError.hidden = !job.friendlyError;
-  friendlyError.textContent = job.friendlyError || "";
-  logBox.textContent = [outputLines.join("\n"), helperLines.join("\n"), job.log || ""].filter(Boolean).join("\n\n");
-  logBox.scrollTop = logBox.scrollHeight;
-
-  if (["success", "failed", "cancelled"].includes(job.status)) {
+    if (["success", "failed", "cancelled"].includes(job.status)) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+      setBusy(false);
+    }
+  } catch (error) {
     clearInterval(pollTimer);
     pollTimer = null;
-    currentJobId = "";
     setBusy(false);
+    logBox.textContent = error.message;
   }
 }
 
 async function startCurrentJob() {
+  const payload = buildPayload();
+  const validation = validatePayload(payload);
+  if (validation) {
+    logBox.textContent = validation;
+    return;
+  }
+  if (fields.outputPath.value.trim()) {
+    localStorage.setItem(outputPathCacheKey, fields.outputPath.value.trim());
+  }
+
   setBusy(true);
-  resultActions.hidden = true;
-  friendlyError.hidden = true;
-  friendlyError.textContent = "";
+  renderFriendlyError("");
+  renderProgress(0, "正在提交任务");
+  jobState.textContent = "状态：提交中";
   logBox.textContent = "";
-  jobState.textContent = "正在启动...";
-  renderProgress(0, "正在启动");
+
   try {
-    const payload = buildPayload();
-    logBox.textContent = outputHint(payload);
     const data = await apiPost("/api/start", payload);
     currentJobId = data.jobId;
-    jobState.textContent = "状态：queued";
-    await pollJob(data.jobId);
-    pollTimer = setInterval(() => pollJob(data.jobId).catch((error) => {
-      logBox.textContent = error.message;
-      setBusy(false);
-      clearInterval(pollTimer);
-    }), 3000);
+    jobState.textContent = "状态：running";
+    pollJob();
+    pollTimer = setInterval(pollJob, 1000);
   } catch (error) {
-    jobState.textContent = "启动失败。";
-    logBox.textContent = error.message;
-    renderProgress(0, "启动失败");
     setBusy(false);
+    jobState.textContent = "状态：failed";
+    logBox.textContent = error.message;
   }
 }
 
 async function cancelCurrentJob() {
-  if (!currentJobId) return;
+  if (!currentJobId) {
+    return;
+  }
   cancelJob.disabled = true;
-  jobState.textContent = "正在取消...";
   try {
     await apiPost("/api/cancel", { jobId: currentJobId });
+    jobState.textContent = "状态：正在取消";
   } catch (error) {
-    logBox.textContent = `${logBox.textContent}\n\n取消失败：${error.message}`;
+    logBox.textContent = error.message;
   }
 }
 
 async function controlCurrentJob(action) {
-  if (!currentJobId) return;
+  if (!currentJobId) {
+    return;
+  }
   try {
     await apiPost("/api/control", { jobId: currentJobId, action });
-    const label = action === "pause" ? "队列将在当前文件结束后暂停。" : action === "resume" ? "队列继续执行。" : "下一项将被跳过。";
-    jobState.textContent = label;
   } catch (error) {
-    logBox.textContent = `${logBox.textContent}\n\n队列控制失败：${error.message}`;
+    logBox.textContent = error.message;
+  }
+}
+
+async function openPath(path) {
+  if (!path) {
+    return;
+  }
+  try {
+    await apiPost("/api/open-path", { path });
+  } catch (error) {
+    logBox.textContent = error.message;
   }
 }
 
@@ -260,41 +359,20 @@ async function loadToolChecks() {
   toolChecks.textContent = "正在检测组件...";
   try {
     const data = await apiGet("/api/tools");
-    toolChecks.innerHTML = "";
-    for (const item of data.checks) {
-      const div = document.createElement("div");
-      div.className = `check-item ${item.ok ? "ok" : "missing"}`;
-      div.innerHTML = `<strong>${item.ok ? "可用" : "缺失"}</strong><span>${item.name}</span><small>${item.detail || item.fix}</small>`;
-      toolChecks.appendChild(div);
-    }
+    const checks = data.checks || [];
+    toolChecks.innerHTML = checks.map((item) => {
+      const ok = item.ok ? "可用" : "缺失";
+      const className = item.ok ? "ok" : "missing";
+      const detail = item.detail ? `<p>${item.detail}</p>` : "";
+      return `<article class="${className}"><span>${ok}</span><strong>${item.name}</strong>${detail}</article>`;
+    }).join("");
   } catch (error) {
-    toolChecks.textContent = `检测失败：${error.message}`;
+    toolChecks.textContent = error.message;
   }
 }
 
-async function openPath(path) {
-  if (!path) return;
-  await apiPost("/api/open-path", { path });
-}
-
-fields.mode.addEventListener("change", updateLabels);
-fields.inputType.addEventListener("change", updateLabels);
-fields.ocrMode.addEventListener("change", () => {
-  if (fields.ocrMode.value === "enhanced") {
-    fields.dpi.value = "300";
-    fields.deskew.checked = true;
-    fields.rotatePages.checked = true;
-    fields.optimize.checked = true;
-  }
-  if (fields.ocrMode.value === "standard") {
-    fields.dpi.value = "300";
-    fields.optimize.checked = true;
-  }
-});
 pickSource.addEventListener("click", () => openSystemPicker("source"));
 pickOutput.addEventListener("click", () => openSystemPicker("output"));
-fields.sourcePath.addEventListener("click", () => openSystemPicker("source"));
-fields.outputPath.addEventListener("click", () => openSystemPicker("output"));
 startJob.addEventListener("click", startCurrentJob);
 cancelJob.addEventListener("click", cancelCurrentJob);
 pauseJob.addEventListener("click", () => controlCurrentJob("pause"));
@@ -303,20 +381,24 @@ skipJob.addEventListener("click", () => controlCurrentJob("skip"));
 refreshTools.addEventListener("click", loadToolChecks);
 openOutput.addEventListener("click", () => openPath(lastOutputs.outputPath || lastOutputs.outputDir));
 openLogDir.addEventListener("click", () => openPath(lastOutputs.summaryHint));
+fields.mode.addEventListener("change", updateLabels);
+fields.inputType.addEventListener("change", () => clearSourceSelection(true));
+
 cleanCache.addEventListener("click", async () => {
   cleanCache.disabled = true;
   jobState.textContent = "正在清理缓存...";
   try {
     const data = await apiPost("/api/clean-cache", {});
     jobState.textContent = `缓存清理完成：${data.count} 个文件夹`;
-    logBox.textContent = data.removed.join("\n") || "没有发现缓存。";
+    logBox.textContent = (data.removed || []).join("\n") || "没有发现缓存。";
   } catch (error) {
-    jobState.textContent = "缓存清理失败。";
+    jobState.textContent = "缓存清理失败";
     logBox.textContent = error.message;
   } finally {
     cleanCache.disabled = false;
   }
 });
+
 showRecent.addEventListener("click", async () => {
   jobState.textContent = "最近输出";
   try {
@@ -336,8 +418,9 @@ showRecent.addEventListener("click", async () => {
   }
 });
 
+fields.inputType.value = "word";
+fields.outputPath.value = localStorage.getItem(outputPathCacheKey) || "";
 updateLabels();
-fields.ocrMode.value = "enhanced";
 fields.dpi.value = "300";
 fields.optimize.checked = true;
 renderProgress(0, "尚未开始");

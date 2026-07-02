@@ -12,20 +12,16 @@ param(
     [ValidateSet("pdf", "word", "auto")]
     [string]$InputType = "pdf",
 
-    [ValidateNotNullOrEmpty()]
-    [string]$Language = "chi_sim+eng",
-
     [ValidateRange(72, 600)]
     [int]$Dpi = 300,
 
-    [ValidateSet("standard", "enhanced")]
-    [string]$OcrProfile = "standard",
-
-    [switch]$Deskew,
-    [switch]$RotatePages,
     [switch]$Optimize,
     [switch]$KeepWork,
     [switch]$DetailedPngProgress,
+    [switch]$AcrobatDoubleLayer,
+
+    [ValidateSet("CHS", "ENG", "CHT")]
+    [string]$AcrobatOcrLanguage = "CHS",
     [switch]$Recurse,
     [switch]$SkipExisting,
 
@@ -114,6 +110,54 @@ function Join-ProcessArguments {
     }) -join " "
 }
 
+function New-SafeLogName {
+    param(
+        [int]$Index,
+        [string]$InputPath
+    )
+
+    return ("item-{0:000}.log" -f $Index)
+}
+
+function Write-FallbackLog {
+    param(
+        [string]$Path,
+        [string]$Message
+    )
+
+    $parent = Split-Path -Parent $Path
+    if ($parent) {
+        [System.IO.Directory]::CreateDirectory($parent) | Out-Null
+    }
+    try {
+        [System.IO.File]::WriteAllText($Path, $Message, [System.Text.UTF8Encoding]::new($false))
+    }
+    catch {
+        Write-Host ("          Failed to write item log: " + $_.Exception.Message)
+    }
+}
+
+function New-UsableDirectory {
+    param(
+        [string]$Path,
+        [string]$FallbackParent,
+        [string]$FallbackPrefix
+    )
+
+    try {
+        [System.IO.Directory]::CreateDirectory($Path) | Out-Null
+        return $Path
+    }
+    catch {
+        $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+        $fallback = Join-Path $FallbackParent ($FallbackPrefix + "-" + $stamp)
+        [System.IO.Directory]::CreateDirectory($fallback) | Out-Null
+        Write-Host ("QUEUE_LOG_DIR_FALLBACK " + $fallback)
+        Write-Host ("          Could not use " + $Path + ": " + $_.Exception.Message)
+        return $fallback
+    }
+}
+
 function Read-QueueCsv {
     param(
         [string]$Path,
@@ -196,6 +240,10 @@ function Invoke-QueueChild {
     $process.StartInfo = $psi
 
     $logEncoding = New-Object System.Text.UTF8Encoding($false)
+    $logParent = Split-Path -Parent $LogPath
+    if ($logParent) {
+        [System.IO.Directory]::CreateDirectory($logParent) | Out-Null
+    }
     $writer = [System.IO.StreamWriter]::new($LogPath, $false, $logEncoding)
 
     try {
@@ -252,16 +300,16 @@ if ($InputDir -and $QueueCsv) {
 }
 
 $outputRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDir)
-New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
+[System.IO.Directory]::CreateDirectory($outputRoot) | Out-Null
 
 $logDir = Join-Path $outputRoot "_queue-logs"
-New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+$logDir = New-UsableDirectory -Path $logDir -FallbackParent $outputRoot -FallbackPrefix "_queue-logs"
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $summaryPath = Join-Path $logDir ("summary-" + $timestamp + ".csv")
 $controlDir = Join-Path $logDir "control"
+$controlDir = New-UsableDirectory -Path $controlDir -FallbackParent $logDir -FallbackPrefix "control"
 $pauseFile = Join-Path $controlDir "pause.flag"
 $skipFile = Join-Path $controlDir "skip-next.flag"
-New-Item -ItemType Directory -Path $controlDir -Force | Out-Null
 Remove-Item -LiteralPath $pauseFile, $skipFile -Force -ErrorAction SilentlyContinue
 
 $queue = @(if ($QueueCsv) {
@@ -282,7 +330,8 @@ $index = 0
 
 foreach ($item in $queue) {
     $index += 1
-    $logPath = Join-Path $logDir ("item-{0:000}-{1}.log" -f $index, ([IO.Path]::GetFileNameWithoutExtension($item.InputPath)))
+    [System.IO.Directory]::CreateDirectory($logDir) | Out-Null
+    $logPath = Join-Path $logDir (New-SafeLogName -Index $index -InputPath $item.InputPath)
     $status = "failed"
     $message = ""
 
@@ -310,9 +359,7 @@ foreach ($item in $queue) {
                 "-ExecutionPolicy", "Bypass",
                 "-File", (Join-Path $PSScriptRoot "make-dual-pdf.ps1"),
                 "-OutputPath", $item.OutputPath,
-                "-Language", $Language,
                 "-Dpi", $Dpi,
-                "-OcrProfile", $OcrProfile,
                 "-RenderEngine", $RenderEngine
             )
 
@@ -323,16 +370,12 @@ foreach ($item in $queue) {
                 $arguments += @("-TaggedPdfPath", $item.InputPath)
             }
 
-            if ($Deskew) {
-                $arguments += "-Deskew"
-            }
-
-            if ($RotatePages) {
-                $arguments += "-RotatePages"
-            }
-
             if ($Optimize) {
                 $arguments += "-Optimize"
+            }
+
+            if ($AcrobatDoubleLayer) {
+                $arguments += @("-AcrobatDoubleLayer", "-AcrobatOcrLanguage", $AcrobatOcrLanguage)
             }
 
             if ($KeepWork) {
@@ -356,8 +399,9 @@ foreach ($item in $queue) {
     }
     catch {
         $message = $_.Exception.Message
+        [System.IO.Directory]::CreateDirectory($logDir) | Out-Null
         if (-not (Test-Path -LiteralPath $logPath)) {
-            $message | Set-Content -LiteralPath $logPath -Encoding UTF8
+            Write-FallbackLog -Path $logPath -Message $message
         }
         Write-Host ("[{0}/{1}] FAIL {2}" -f $index, $queue.Count, $item.InputPath)
         Write-Host ("          " + $message)

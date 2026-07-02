@@ -17,7 +17,6 @@ if ($pythonCommand.Source -like "*\Microsoft\WindowsApps\*") {
 & $pythonCommand.Source --version
 & $pythonCommand.Source -m pip install --upgrade pip
 & $pythonCommand.Source -m pip install -r (Join-Path $PSScriptRoot "requirements.txt")
-& $pythonCommand.Source -m pip install img2pdf ocrmypdf
+& $pythonCommand.Source -m pip install img2pdf
 
 Write-Host "Python packages installed."
-

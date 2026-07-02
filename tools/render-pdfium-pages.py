@@ -37,7 +37,7 @@ def main() -> int:
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--dpi", type=int, default=300)
     parser.add_argument("--workers", type=int, default=4)
-    parser.add_argument("--format", choices=("jpeg",), default="jpeg")
+    parser.add_argument("--format", choices=("png", "jpeg"), default="png")
     parser.add_argument("--jpeg-quality", type=int, default=75)
     args = parser.parse_args()
 

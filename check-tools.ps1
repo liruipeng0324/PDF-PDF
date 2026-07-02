@@ -11,10 +11,9 @@ function Add-ToolDirectory {
 
 Add-ToolDirectory (Join-Path $PSScriptRoot "tools\poppler-26.02.0-0\poppler-26.02.0\Library\bin")
 Add-ToolDirectory (Join-Path $PSScriptRoot "tools\qpdf-12.3.2\qpdf-12.3.2-msvc64\bin")
-Add-ToolDirectory (Join-Path $PSScriptRoot "tools\tesseract")
-Add-ToolDirectory (Join-Path $PSScriptRoot "tools\tesseract-nsis")
 Add-ToolDirectory (Join-Path $PSScriptRoot "tools\ghostscript-10.07.1\bin")
-Add-ToolDirectory "D:\OCR"
+Add-ToolDirectory (Join-Path $PSScriptRoot "tools\Python312")
+Add-ToolDirectory (Join-Path $PSScriptRoot "tools\Python312\Scripts")
 Add-ToolDirectory "D:\GPL\gs10.07.1\bin"
 $env:Path = [Environment]::GetEnvironmentVariable("Path", "User") + ";" +
     [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
@@ -29,24 +28,25 @@ if (Test-Path -LiteralPath $projectPythonPackages) {
         $env:PYTHONPATH = $projectPythonPackages
     }
 }
-$projectTessdata = Join-Path $PSScriptRoot "tools\tessdata"
-if (Test-Path -LiteralPath $projectTessdata) {
-    $env:TESSDATA_PREFIX = $projectTessdata
-}
+$env:HOME = $PSScriptRoot
+$env:USERPROFILE = $PSScriptRoot
 
-$pythonCommandForChecks = if (Test-Path -LiteralPath $projectPython) { $projectPython } else { "python" }
+$projectPython312 = Join-Path $PSScriptRoot "tools\Python312\python.exe"
+$useProjectPython312 = Test-Path -LiteralPath $projectPython312
+$pythonCommandForChecks = if ($useProjectPython312) { $projectPython312 } elseif (Test-Path -LiteralPath $projectPython) { $projectPython } else { "python" }
+if ($useProjectPython312) {
+    $env:PYTHONPATH = ""
+}
 
 $checks = @(
     @{ Name = "Python"; Command = $pythonCommandForChecks; Args = @("--version") },
     @{ Name = "pip"; Command = $pythonCommandForChecks; Args = @("-m", "pip", "--version") },
     @{ Name = "Poppler pdftoppm"; Command = "pdftoppm"; Args = @("-v") },
     @{ Name = "qpdf"; Command = "qpdf"; Args = @("--version") },
-    @{ Name = "Tesseract"; Command = "tesseract"; Args = @("--version") },
-    @{ Name = "Tesseract languages"; Command = "tesseract"; Args = @("--list-langs") },
     @{ Name = "Ghostscript"; Command = "gswin64c"; Args = @("--version") },
-    @{ Name = "OCRmyPDF"; Command = $pythonCommandForChecks; Args = @("-m", "ocrmypdf", "--version") },
     @{ Name = "img2pdf"; Command = $pythonCommandForChecks; Args = @("-m", "img2pdf", "--version") },
-    @{ Name = "pikepdf"; Command = $pythonCommandForChecks; Args = @("-c", "import pikepdf; print(pikepdf.__version__)") }
+    @{ Name = "pikepdf"; Command = $pythonCommandForChecks; Args = @("-c", "import pikepdf; print(pikepdf.__version__)") },
+    @{ Name = "pywin32"; Command = $pythonCommandForChecks; Args = @("-c", "import win32com.client; print('available')") }
 )
 
 foreach ($check in $checks) {
@@ -61,10 +61,17 @@ foreach ($check in $checks) {
         continue
     }
 
-    Write-Host ("[found]   " + $check.Name + " -> " + $cmd.Source)
     $oldPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     $output = & $cmd.Source @($check.Args) 2>&1
+    $exitCode = $LASTEXITCODE
     $ErrorActionPreference = $oldPreference
+    if ($exitCode -ne 0) {
+        Write-Host ("[missing] " + $check.Name + " -> " + $cmd.Source)
+        $output | Select-Object -First 1 | ForEach-Object { Write-Host ("          " + $_) }
+        continue
+    }
+
+    Write-Host ("[found]   " + $check.Name + " -> " + $cmd.Source)
     $output | Select-Object -First 1 | ForEach-Object { Write-Host ("          " + $_) }
 }

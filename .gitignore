@@ -2,7 +2,11 @@ tools/*
 !tools/restore-bookmarks.py
 !tools/merge-png-pdf.py
 !tools/render-pdfium-pages.py
+!tools/paddle-ocr-pdf.py
+!tools/test-post-acrobat-flow.py
 test-output/
+.paddlex/
+tools/paddle-cache/
 __pycache__/
 *.pyc
 *_work/

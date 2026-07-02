@@ -154,7 +154,7 @@ def source_outline_items(source_pdf, page_indexes, target_pdf):
 def main():
     parser = argparse.ArgumentParser(description="Copy bookmarks from one PDF to another PDF with matching pages.")
     parser.add_argument("--source", required=True, help="Tagged PDF exported from Word.")
-    parser.add_argument("--target", required=True, help="OCR PDF that needs bookmarks.")
+    parser.add_argument("--target", required=True, help="PDF that needs bookmarks.")
     parser.add_argument("--output", required=True, help="Final PDF path.")
     args = parser.parse_args()
 

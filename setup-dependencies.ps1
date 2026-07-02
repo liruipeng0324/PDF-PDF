@@ -10,6 +10,11 @@ function Add-ToolDirectory {
 }
 
 function Find-Python {
+    $projectPython312 = Join-Path $PSScriptRoot "tools\Python312\python.exe"
+    if (Test-Path -LiteralPath $projectPython312) {
+        return $projectPython312
+    }
+
     $projectPython = Join-Path $PSScriptRoot "tools\Python313\python.exe"
     if (Test-Path -LiteralPath $projectPython) {
         return $projectPython
@@ -30,20 +35,15 @@ function Find-Python {
 
 Add-ToolDirectory (Join-Path $PSScriptRoot "tools\Python313")
 Add-ToolDirectory (Join-Path $PSScriptRoot "tools\Python313\Scripts")
+Add-ToolDirectory (Join-Path $PSScriptRoot "tools\Python312")
+Add-ToolDirectory (Join-Path $PSScriptRoot "tools\Python312\Scripts")
 Add-ToolDirectory (Join-Path $PSScriptRoot "tools\poppler-26.02.0-0\poppler-26.02.0\Library\bin")
 Add-ToolDirectory (Join-Path $PSScriptRoot "tools\qpdf-12.3.2\qpdf-12.3.2-msvc64\bin")
-Add-ToolDirectory (Join-Path $PSScriptRoot "tools\tesseract")
-Add-ToolDirectory (Join-Path $PSScriptRoot "tools\tesseract-nsis")
 Add-ToolDirectory (Join-Path $PSScriptRoot "tools\ghostscript-10.07.1\bin")
 
 $packages = Join-Path $PSScriptRoot "tools\python-packages"
 if (Test-Path -LiteralPath $packages) {
     $env:PYTHONPATH = "$packages;$env:PYTHONPATH"
-}
-
-$tessdata = Join-Path $PSScriptRoot "tools\tessdata"
-if (Test-Path -LiteralPath $tessdata) {
-    $env:TESSDATA_PREFIX = $tessdata
 }
 
 $python = Find-Python

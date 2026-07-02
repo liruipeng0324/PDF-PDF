@@ -1,0 +1,9 @@
+{
+  "manual_ui_mode": true,
+  "require_maximized": true,
+  "expected_resolution": [1920, 1080],
+  "scan_tool": [1896, 611],
+  "recognize_text_menu": [882, 150],
+  "in_this_file": [941, 195],
+  "recognize_text_confirm": [1127, 198]
+}

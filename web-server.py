@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import re
@@ -32,10 +33,9 @@ JOBS: dict[str, dict] = {}
 STAGE_RE = re.compile(r"\[(\d+)/(\d+)\]\s*(.*)")
 QUEUE_START_RE = re.compile(r"\[(\d+)/(\d+)\]\s+START\s+(.*)")
 QUEUE_END_RE = re.compile(r"\[(\d+)/(\d+)\]\s+(OK|FAIL|SKIP)\s+(.*)")
-OCR_TOTAL_RE = re.compile(r"OCR_TOTAL_PAGES\s+(\d+)")
-OCR_PAGE_RE = re.compile(r"(?:page|Page|OCR).*?(\d+)\s*/\s*(\d+)|(?:page|Page)\s+(\d+)")
 PNG_TOTAL_RE = re.compile(r"(?:PNG|IMAGE)_TOTAL_PAGES\s+(\d+)")
 PNG_PAGE_RE = re.compile(r"(?:PNG|IMAGE)_PAGE\s+(\d+)\s*/\s*(\d+)")
+QUEUE_LOG_FALLBACK_RE = re.compile(r"QUEUE_LOG_DIR_FALLBACK\s+(.+)")
 
 
 def json_response(handler: SimpleHTTPRequestHandler, status: int, payload: dict) -> None:
@@ -57,24 +57,20 @@ def read_json(handler: SimpleHTTPRequestHandler) -> dict:
 
 def add_tool_paths(env: dict[str, str]) -> dict[str, str]:
     paths = [
+        ROOT / "tools" / "Python312",
+        ROOT / "tools" / "Python312" / "Scripts",
         ROOT / "tools" / "Python313",
         ROOT / "tools" / "Python313" / "Scripts",
         ROOT / "tools" / "poppler-26.02.0-0" / "poppler-26.02.0" / "Library" / "bin",
         ROOT / "tools" / "qpdf-12.3.2" / "qpdf-12.3.2-msvc64" / "bin",
-        ROOT / "tools" / "tesseract",
-        ROOT / "tools" / "tesseract-nsis",
         ROOT / "tools" / "ghostscript-10.07.1" / "bin",
-        Path(r"D:\OCR"),
         Path(r"D:\GPL\gs10.07.1\bin"),
     ]
     existing = [str(path) for path in paths if path.exists()]
     env["PATH"] = ";".join(existing + [env.get("PATH", "")])
     packages = ROOT / "tools" / "python-packages"
-    if packages.exists():
+    if packages.exists() and not (ROOT / "tools" / "Python312" / "python.exe").exists():
         env["PYTHONPATH"] = str(packages) + (";" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
-    tessdata = ROOT / "tools" / "tessdata"
-    if tessdata.exists():
-        env["TESSDATA_PREFIX"] = str(tessdata)
     return env
 
 
@@ -105,6 +101,7 @@ def run_short(command: list[str], timeout: int = 12) -> tuple[bool, str]:
 
 def find_python() -> str:
     candidates = [
+        ROOT / "tools" / "Python312" / "python.exe",
         ROOT / "tools" / "Python313" / "python.exe",
         Path(r"C:\Users\Administrator\AppData\Local\Python\bin\python.exe"),
     ]
@@ -162,17 +159,14 @@ def list_directory(path: str) -> dict:
 
 def explain_error(log: str) -> str:
     patterns = [
-        ("Tesseract language data is missing", "OCR 语言包缺失。请把对应的 .traineddata 放到 tools\\tessdata，或在界面里换成已经安装的语言。"),
-        ("does not have language data", "OCR 语言包缺失。常见原因是缺少 chi_sim.traineddata。"),
-        ("Can't open hocr", "Tesseract 配置文件不完整。请确认 tools\\tessdata 里有 configs、tessconfigs、pdf.ttf。"),
-        ("Word PDF export failed", "Word 导出 PDF 失败。请确认电脑已安装 Microsoft Word，并且当前桌面会话能正常打开 Word。"),
-        ("No JPG pages were created", "PDF 转 JPG 没有生成页面。请确认源 PDF 能正常打开。"),
+        ("Word PDF export failed", "Word 已安装，但自动导出 PDF 失败。请先打开 Word 关闭激活、恢复、更新或受保护视图提示；如果仍失败，可先用 Word 手动另存为 PDF，再选择 PDF 输入模式。"),
+        ("No JPG pages were created", "PDF 转图片没有生成页面。请确认源 PDF 能正常打开。"),
         ("No PNG pages were created", "PDF 转图片没有生成页面。请确认源 PDF 能正常打开。"),
-        ("pdftoppm failed", "PDF 转 JPG 失败。请检查 PDF 是否损坏/加密。"),
-        ("OCRmyPDF failed", "OCR 阶段失败。请查看日志末尾，通常与 OCR 语言包、PDF 图片或权限有关。"),
+        ("No rendered image pages were created", "PDF 转图片没有生成页面。请确认源 PDF 能正常打开。"),
+        ("pdftoppm failed", "PDF 转图片失败。请检查 PDF 是否损坏/加密。"),
         ("Access is denied", "路径没有写入权限，或目标 PDF 正被其他程序打开。"),
         ("Permission denied", "路径没有写入权限，或目标 PDF 正被其他程序打开。"),
-        ("Queue is empty", "队列为空。请确认输入文件夹里有 PDF/Word 文件，或 CSV 内容正确。"),
+        ("Queue is empty", "队列为空。请确认已经选择 Word/PDF 文件，或 CSV 内容正确。"),
     ]
     for marker, message in patterns:
         if marker.lower() in log.lower():
@@ -180,11 +174,46 @@ def explain_error(log: str) -> str:
     return ""
 
 
+def quote_command(command: list[str]) -> str:
+    parts = []
+    for item in command:
+        if any(ch.isspace() for ch in item) or '"' in item:
+            parts.append('"' + item.replace('"', '\\"') + '"')
+        else:
+            parts.append(item)
+    return " ".join(parts)
+
+
+def append_log_file(job: dict, line: str) -> None:
+    log_path = (job.get("outputs") or {}).get("summaryHint")
+    if not log_path:
+        return
+    try:
+        path = Path(log_path)
+        if path.suffix.lower() != ".log":
+            path.mkdir(parents=True, exist_ok=True)
+            path = path / "web-job.log"
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+    except Exception:
+        return
+
+
 def run_job(job_id: str, command: list[str], cwd: Path) -> None:
     job = JOBS[job_id]
     job["status"] = "running"
     job["progressText"] = "正在运行"
     job["startedAt"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    job["lastOutputAt"] = time.time()
+    lines = [
+        "WEB_JOB_STARTED " + job["startedAt"],
+        "WEB_COMMAND " + quote_command(command),
+    ]
+    job["log"] = "\n".join(lines)
+    for initial_line in lines:
+        append_log_file(job, initial_line)
     try:
         process = subprocess.Popen(
             command,
@@ -198,11 +227,14 @@ def run_job(job_id: str, command: list[str], cwd: Path) -> None:
         )
         job["pid"] = process.pid
         job["process"] = process
-        lines = []
+        monitor = threading.Thread(target=monitor_job_stall, args=(job_id,), daemon=True)
+        monitor.start()
         assert process.stdout is not None
         for line in process.stdout:
             clean_line = line.rstrip()
+            job["lastOutputAt"] = time.time()
             lines.append(clean_line)
+            append_log_file(job, clean_line)
             update_progress(job, clean_line)
             text = "\n".join(lines[-700:])
             job["log"] = text
@@ -229,6 +261,7 @@ def run_job(job_id: str, command: list[str], cwd: Path) -> None:
     finally:
         job.pop("process", None)
         job["finishedAt"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        append_log_file(job, "WEB_JOB_FINISHED " + job["finishedAt"])
 
 
 def terminate_process_tree(pid: int) -> None:
@@ -253,7 +286,33 @@ def terminate_process_tree(pid: int) -> None:
             return
 
 
+def monitor_job_stall(job_id: str) -> None:
+    while True:
+        time.sleep(15)
+        job = JOBS.get(job_id)
+        if not job or job.get("status") not in {"running", "queued"}:
+            return
+        process = job.get("process")
+        if not process or process.poll() is not None:
+            return
+
+        idle_seconds = time.time() - float(job.get("lastOutputAt") or time.time())
+        if idle_seconds < 180:
+            continue
+
+        idle_minutes = int(idle_seconds // 60)
+        job["progressText"] = f"任务仍在运行，已 {idle_minutes} 分钟没有新日志"
+
+
 def update_progress(job: dict, line: str) -> None:
+    fallback_match = QUEUE_LOG_FALLBACK_RE.search(line)
+    if fallback_match:
+        fallback_dir = fallback_match.group(1).strip()
+        outputs = job.setdefault("outputs", {})
+        outputs["summaryHint"] = fallback_dir
+        outputs["controlDir"] = str(Path(fallback_dir) / "control")
+        return
+
     queue_start_match = QUEUE_START_RE.search(line)
     if queue_start_match:
         current = int(queue_start_match.group(1))
@@ -291,26 +350,8 @@ def update_progress(job: dict, line: str) -> None:
         job["progressText"] = f"图片正在转换第 {job['pngCurrentPage']} / {total_pages} 页"
         return
 
-    total_match = OCR_TOTAL_RE.search(line)
-    if total_match:
-        job["ocrTotalPages"] = int(total_match.group(1))
-        return
-
     match = STAGE_RE.search(line)
     if not match:
-        if job.get("ocrTotalPages") and job.get("currentStage") == 4:
-            page_match = OCR_PAGE_RE.search(line)
-            if page_match:
-                if page_match.group(1) and page_match.group(2):
-                    current_page = int(page_match.group(1))
-                    total_pages = int(page_match.group(2))
-                else:
-                    current_page = int(page_match.group(3))
-                    total_pages = int(job["ocrTotalPages"])
-                job["ocrCurrentPage"] = min(current_page, total_pages)
-                job["ocrTotalPages"] = total_pages
-                update_page_progress(job, 0.60, 0.20, job["ocrCurrentPage"], total_pages)
-                job["progressText"] = f"OCR 正在扫描第 {job['ocrCurrentPage']} / {total_pages} 页"
         if "Queue complete." in line:
             job["progress"] = 100
             job["progressText"] = "队列完成"
@@ -324,14 +365,6 @@ def update_progress(job: dict, line: str) -> None:
         job["currentStage"] = current
         progress = min(99, max(1, int(((current - 1) / total) * 100)))
         job["progressText"] = f"步骤 {current}/{total}: {detail}" if detail else f"步骤 {current}/{total}"
-        if current == 4 and job.get("ocrTotalPages"):
-            total_pages = job["ocrTotalPages"]
-            current_page = job.get("ocrCurrentPage", 0)
-            job["progressText"] = (
-                f"OCR 正在扫描第 {current_page} / {total_pages} 页"
-                if current_page
-                else f"OCR 正在扫描，共 {total_pages} 页"
-            )
         if current == 2 and job.get("pngTotalPages"):
             total_pages = job["pngTotalPages"]
             current_page = job.get("pngCurrentPage", 0)
@@ -363,29 +396,21 @@ def switch_arg(enabled: bool, name: str) -> list[str]:
     return [name] if enabled else []
 
 
-def mode_flags(payload: dict) -> tuple[bool, bool, bool, bool]:
-    mode = payload.get("ocrMode", "standard")
-    detailed = bool(payload.get("detailedPngProgress"))
-    if mode == "fast":
-        return False, False, False, detailed
-    if mode in ("accurate", "enhanced"):
-        return True, True, bool(payload.get("optimize")), detailed
-    return bool(payload.get("deskew")), bool(payload.get("rotatePages")), bool(payload.get("optimize")), detailed
-
-
 def build_command(payload: dict) -> list[str]:
     mode = payload.get("mode", "single")
-    language = payload.get("language", "chi_sim+eng")
     dpi = str(payload.get("dpi", 300))
     render_engine = payload.get("renderEngine", "pdfium")
-    deskew, rotate_pages, optimize, detailed_png = mode_flags(payload)
+    optimize = bool(payload.get("optimize"))
+    detailed_png = bool(payload.get("detailedPngProgress"))
+    acrobat_double_layer = bool(payload.get("acrobatDoubleLayer"))
+    acrobat_ocr_language = payload.get("acrobatOcrLanguage", "CHS")
 
-    base = [POWERSHELL, "-ExecutionPolicy", "Bypass"]
+    base = [POWERSHELL, "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass"]
 
     if mode == "single":
         input_type = payload.get("inputType", "pdf")
         source_path = payload.get("sourcePath", "")
-        output_path = payload.get("outputPath", "")
+        output_path = normalize_single_output_path(source_path, payload.get("outputPath", ""))
         if not source_path or not output_path:
             raise ValueError("源文件和输出 PDF 都不能为空。")
         script = ROOT / "make-dual-pdf.ps1"
@@ -394,21 +419,25 @@ def build_command(payload: dict) -> list[str]:
         command += ["-OutputPath", output_path]
     else:
         source_path = payload.get("sourcePath", "")
+        source_paths = payload.get("sourcePaths") or []
         output_path = payload.get("outputPath", "")
-        if not source_path or not output_path:
+        if not (source_path or source_paths) or not output_path:
             raise ValueError("输入位置和输出目录都不能为空。")
         script = ROOT / "run-queue.ps1"
         command = base + ["-File", str(script)]
-        command += ["-InputDir" if mode == "queue-dir" else "-QueueCsv", source_path]
+        if mode == "queue-dir" and source_paths:
+            source_path = create_queue_csv(source_paths, payload.get("inputType", "pdf"), output_path)
+            command += ["-QueueCsv", source_path]
+        else:
+            command += ["-InputDir" if mode == "queue-dir" else "-QueueCsv", source_path]
         command += ["-OutputDir", output_path]
         command += ["-InputType", payload.get("inputType", "pdf")]
 
-    command += ["-Language", language, "-Dpi", dpi]
-    command += ["-OcrProfile", "enhanced" if payload.get("ocrMode") == "enhanced" else "standard"]
+    command += ["-Dpi", dpi]
     command += ["-RenderEngine", render_engine]
-    command += switch_arg(deskew, "-Deskew")
-    command += switch_arg(rotate_pages, "-RotatePages")
     command += switch_arg(optimize, "-Optimize")
+    if acrobat_double_layer:
+        command += ["-AcrobatDoubleLayer", "-AcrobatOcrLanguage", acrobat_ocr_language]
     command += switch_arg(bool(payload.get("keepWork")), "-KeepWork")
     command += switch_arg(detailed_png, "-DetailedPngProgress")
     if mode == "queue-dir":
@@ -418,11 +447,46 @@ def build_command(payload: dict) -> list[str]:
     return command
 
 
+def create_queue_csv(source_paths: list[str], input_type: str, output_dir: str) -> str:
+    queue_dir = ROOT / ".cache" / "web-queues"
+    queue_dir.mkdir(parents=True, exist_ok=True)
+    queue_path = queue_dir / ("queue-" + time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8] + ".csv")
+    normalized_type = input_type if input_type in {"word", "pdf", "auto"} else "auto"
+    with queue_path.open("w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["InputPath", "OutputPath", "Type"])
+        writer.writeheader()
+        for source_path in source_paths:
+            if not source_path:
+                continue
+            writer.writerow({
+                "InputPath": source_path,
+                "OutputPath": "",
+                "Type": normalized_type,
+            })
+    return str(queue_path)
+
+
+def normalize_single_output_path(source_path: str, output_path: str) -> str:
+    if not output_path:
+        return ""
+    output = Path(output_path)
+    if output.suffix.lower() == ".pdf":
+        return str(output)
+    source_stem = Path(source_path).stem or "output"
+    return str(output / f"{source_stem}-dual-layer.pdf")
+
+
 def expected_outputs(payload: dict) -> dict:
     mode = payload.get("mode", "single")
     output_path = payload.get("outputPath", "")
     if mode == "single":
-        return {"outputPath": output_path, "outputDir": str(Path(output_path).parent) if output_path else ""}
+        output_path = normalize_single_output_path(payload.get("sourcePath", ""), output_path)
+        output = Path(output_path) if output_path else Path("")
+        return {
+            "outputPath": output_path,
+            "outputDir": str(output.parent) if output_path else "",
+            "summaryHint": str(output.with_suffix(".log")) if output_path else "",
+        }
     return {
         "outputDir": output_path,
         "summaryHint": str(Path(output_path) / "_queue-logs") if output_path else "",
@@ -472,30 +536,33 @@ def dependency_checks() -> dict:
     if python:
         ok, output = run_short([python, "--version"])
         add("Python 版本", ok, output, "确认 Python 可以正常启动。")
-        for module in ("ocrmypdf", "img2pdf", "pikepdf", "pypdfium2"):
+        for module in ("img2pdf", "pikepdf", "pypdfium2", "win32com.client", "pywinauto"):
             command = [python, "-m", module, "--version"]
             if module == "pikepdf":
                 command = [python, "-c", "import pikepdf; print(pikepdf.__version__)"]
             elif module == "pypdfium2":
                 command = [python, "-c", "import pypdfium2; print('available')"]
+            elif module == "win32com.client":
+                command = [python, "-c", "import win32com.client; print('available')"]
+            elif module == "pywinauto":
+                command = [python, "-c", "import pywinauto; print(pywinauto.__version__)"]
             ok, output = run_short(command)
-            add(f"Python 模块 {module}", ok, output, "运行 install-python-packages.ps1 安装依赖。")
+            label = "pywin32" if module == "win32com.client" else module
+            add(f"Python 模块 {label}", ok, output, "运行 install-python-packages.ps1 安装依赖。")
 
     for name, command, args, fix in [
         ("Poppler pdftoppm", "pdftoppm", ["-v"], "安装 Poppler，或放入 tools\\poppler-26.02.0-0。"),
         ("qpdf", "qpdf", ["--version"], "安装 qpdf，或放入 tools\\qpdf-12.3.2。"),
-        ("Tesseract OCR", "tesseract", ["--version"], "安装 Tesseract，或放入 tools\\tesseract。"),
         ("Ghostscript", "gswin64c", ["--version"], "安装 Ghostscript，或放入 tools\\ghostscript-10.07.1。"),
     ]:
         ok, output = run_short([command, *args])
         add(name, ok, output, fix)
 
-    ok, output = run_short(["tesseract", "--list-langs"])
-    langs = set(line.strip() for line in output.splitlines() if line.strip() and not line.startswith("List of"))
-    add("中文 OCR 语言包", ok and "chi_sim" in langs, "已安装 chi_sim" if "chi_sim" in langs else output, "把 chi_sim.traineddata 放入 tools\\tessdata。")
-
     ok, output = run_short([POWERSHELL, "-ExecutionPolicy", "Bypass", "-File", str(ROOT / "check-word.ps1")], timeout=20)
     add("Microsoft Word 自动导出", ok and ("available" in output.lower() or "[found]" in output.lower()), output, "安装 Microsoft Word；没有 Word 时请选择“已导出的 PDF”模式。")
+
+    ok, output = run_short([POWERSHELL, "-ExecutionPolicy", "Bypass", "-File", str(ROOT / "check-acrobat-com.ps1")], timeout=50)
+    add("Acrobat COM 自动化", ok and "ACROBAT_COM_OK" in output, output, "运行 repair-acrobat-com.ps1 修复 Acrobat COM，或在桌面完成 Acrobat 授权/更新提示。")
 
     return {"checks": checks, "allOk": all(item["ok"] for item in checks)}
 
@@ -548,11 +615,16 @@ def open_path(path: str) -> None:
 
 def native_pick(payload: dict) -> dict:
     kind = payload.get("kind", "file")
+    original_kind = kind
+    target = payload.get("target", "")
     title = payload.get("title", "选择路径")
     file_filter = payload.get("filter", "所有文件 (*.*)|*.*")
-    initial = payload.get("initialPath", "")
-    return native_pick_tk(kind, title, file_filter, initial)
-
+    initial = payload.get("initial") or payload.get("initialPath", "")
+    title_text = str(title)
+    if target == "output" or (kind in {"save-file", "file"} and ("输出" in title_text or "output" in title_text.lower())):
+        kind = "dir"
+    if target != "output" and original_kind != "save-file" and kind == "dir" and any(token in file_filter.lower() for token in (".doc", ".docx", ".pdf")):
+        kind = "files"
     script = r'''
 param(
     [string]$Kind,
@@ -564,6 +636,16 @@ param(
 
 Add-Type -AssemblyName System.Windows.Forms
 [System.Windows.Forms.Application]::EnableVisualStyles()
+
+$owner = New-Object System.Windows.Forms.Form
+$owner.TopMost = $true
+$owner.ShowInTaskbar = $false
+$owner.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+$owner.Width = 1
+$owner.Height = 1
+$owner.Opacity = 0
+$owner.Show()
+$owner.Activate()
 
 if ($Kind -eq "dir") {
     $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
@@ -577,9 +659,39 @@ if ($Kind -eq "dir") {
             $dialog.SelectedPath = Split-Path -Parent $Initial
         }
     }
-    if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+    if ($dialog.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) {
         Set-Content -LiteralPath $ResultPath -Value $dialog.SelectedPath -Encoding UTF8
     }
+    $owner.Close()
+    exit 0
+}
+
+if ($Kind -eq "save-file") {
+    $dialog = New-Object System.Windows.Forms.SaveFileDialog
+    $dialog.Title = $Title
+    $dialog.Filter = $Filter
+    $dialog.OverwritePrompt = $true
+    $dialog.AddExtension = $true
+    $dialog.DefaultExt = "pdf"
+    if ($Initial) {
+        if (Test-Path -LiteralPath $Initial) {
+            if ((Get-Item -LiteralPath $Initial).PSIsContainer) {
+                $dialog.InitialDirectory = $Initial
+            }
+            else {
+                $dialog.InitialDirectory = Split-Path -Parent $Initial
+                $dialog.FileName = Split-Path -Leaf $Initial
+            }
+        }
+        else {
+            $dialog.InitialDirectory = Split-Path -Parent $Initial
+            $dialog.FileName = Split-Path -Leaf $Initial
+        }
+    }
+    if ($dialog.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) {
+        Set-Content -LiteralPath $ResultPath -Value $dialog.FileName -Encoding UTF8
+    }
+    $owner.Close()
     exit 0
 }
 
@@ -587,7 +699,7 @@ $dialog = New-Object System.Windows.Forms.OpenFileDialog
 $dialog.Title = $Title
 $dialog.Filter = $Filter
 $dialog.CheckFileExists = $true
-$dialog.Multiselect = $false
+$dialog.Multiselect = ($Kind -eq "files")
 if ($Initial -and (Test-Path -LiteralPath $Initial)) {
     if ((Get-Item -LiteralPath $Initial).PSIsContainer) {
         $dialog.InitialDirectory = $Initial
@@ -596,9 +708,15 @@ if ($Initial -and (Test-Path -LiteralPath $Initial)) {
         $dialog.InitialDirectory = Split-Path -Parent $Initial
     }
 }
-if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-    Set-Content -LiteralPath $ResultPath -Value $dialog.FileName -Encoding UTF8
+if ($dialog.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) {
+    if ($Kind -eq "files") {
+        Set-Content -LiteralPath $ResultPath -Value $dialog.FileNames -Encoding UTF8
+    }
+    else {
+        Set-Content -LiteralPath $ResultPath -Value $dialog.FileName -Encoding UTF8
+    }
 }
+$owner.Close()
 '''
     temp_path = ""
     result_path = ""
@@ -611,16 +729,25 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
         result_handle.close()
         Path(result_path).write_text("", encoding="utf-8")
 
+        startupinfo = None
+        creationflags = 0
+        if os.name == "nt":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            creationflags = subprocess.CREATE_NO_WINDOW
+
         process = subprocess.Popen(
-            [POWERSHELL, "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File", temp_path, kind, title, file_filter, initial, result_path],
+            [POWERSHELL, "-NoProfile", "-WindowStyle", "Hidden", "-STA", "-ExecutionPolicy", "Bypass", "-File", temp_path, kind, title, file_filter, initial, result_path],
             cwd=str(ROOT),
-            creationflags=subprocess.CREATE_NEW_CONSOLE,
+            startupinfo=startupinfo,
+            creationflags=creationflags,
         )
         code = process.wait(timeout=600)
         if code != 0:
             raise RuntimeError("系统文件资源管理器选择窗口打开失败。")
         selected = Path(result_path).read_text(encoding="utf-8-sig").strip().splitlines()
-        return {"selected": selected[-1] if selected else ""}
+        return {"selected": selected[-1] if selected else "", "selectedPaths": selected}
     finally:
         if temp_path:
             Path(temp_path).unlink(missing_ok=True)
@@ -665,6 +792,12 @@ def native_pick_tk(kind: str, title: str, file_filter: str, initial: str) -> dic
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
+
+    def end_headers(self) -> None:
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        super().end_headers()
 
     def log_message(self, format: str, *args) -> None:
         return

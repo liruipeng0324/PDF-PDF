@@ -1,7 +1,10 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$python = Join-Path $PSScriptRoot "tools\Python313\python.exe"
+$python = Join-Path $PSScriptRoot "tools\Python312\python.exe"
+if (-not (Test-Path -LiteralPath $python)) {
+    $python = Join-Path $PSScriptRoot "tools\Python313\python.exe"
+}
 if (-not (Test-Path -LiteralPath $python)) {
     $localPython = "C:\Users\Administrator\AppData\Local\Python\bin\python.exe"
     if (Test-Path -LiteralPath $localPython) {
@@ -17,6 +20,7 @@ if (-not (Test-Path -LiteralPath $python)) {
 }
 
 $url = "http://127.0.0.1:8765/"
+$openUrl = $url + "?v=" + (Get-Date -Format "yyyyMMddHHmmss")
 $serverScript = Join-Path $PSScriptRoot "web-server.py"
 $logPath = Join-Path $PSScriptRoot "web-server.log"
 $errorLogPath = Join-Path $PSScriptRoot "web-server-error.log"
@@ -61,5 +65,5 @@ if (-not $ready) {
     exit 1
 }
 
-Start-Process $url
-Write-Host $url
+Start-Process $openUrl
+Write-Host $openUrl
