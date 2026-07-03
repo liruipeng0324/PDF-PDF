@@ -9,11 +9,30 @@ function Add-ToolDirectory {
     }
 }
 
+function Add-MatchingToolDirectories {
+    param(
+        [string]$Root,
+        [string]$Pattern
+    )
+
+    if (-not (Test-Path -LiteralPath $Root)) {
+        return
+    }
+
+    Get-ChildItem -LiteralPath $Root -Recurse -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -like $Pattern } |
+        ForEach-Object { Add-ToolDirectory $_.FullName }
+}
+
 Add-ToolDirectory (Join-Path $PSScriptRoot "tools\poppler-26.02.0-0\poppler-26.02.0\Library\bin")
 Add-ToolDirectory (Join-Path $PSScriptRoot "tools\qpdf-12.3.2\qpdf-12.3.2-msvc64\bin")
 Add-ToolDirectory (Join-Path $PSScriptRoot "tools\ghostscript-10.07.1\bin")
 Add-ToolDirectory (Join-Path $PSScriptRoot "tools\Python312")
 Add-ToolDirectory (Join-Path $PSScriptRoot "tools\Python312\Scripts")
+Add-MatchingToolDirectories -Root (Join-Path $PSScriptRoot "tools") -Pattern "*\poppler-*\Library\bin"
+Add-MatchingToolDirectories -Root (Join-Path $PSScriptRoot "tools") -Pattern "*\qpdf-*\bin"
+Add-MatchingToolDirectories -Root (Join-Path $PSScriptRoot "tools") -Pattern "*\gs*\bin"
+Add-MatchingToolDirectories -Root (Join-Path $PSScriptRoot "tools") -Pattern "*\ghostscript*\bin"
 Add-ToolDirectory "D:\GPL\gs10.07.1\bin"
 $env:Path = [Environment]::GetEnvironmentVariable("Path", "User") + ";" +
     [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
@@ -46,7 +65,8 @@ $checks = @(
     @{ Name = "Ghostscript"; Command = "gswin64c"; Args = @("--version") },
     @{ Name = "img2pdf"; Command = $pythonCommandForChecks; Args = @("-m", "img2pdf", "--version") },
     @{ Name = "pikepdf"; Command = $pythonCommandForChecks; Args = @("-c", "import pikepdf; print(pikepdf.__version__)") },
-    @{ Name = "pywin32"; Command = $pythonCommandForChecks; Args = @("-c", "import win32com.client; print('available')") }
+    @{ Name = "pywin32"; Command = $pythonCommandForChecks; Args = @("-c", "import win32com.client; print('available')") },
+    @{ Name = "pywinauto"; Command = $pythonCommandForChecks; Args = @("-c", "import pywinauto; print(pywinauto.__version__)") }
 )
 
 foreach ($check in $checks) {
@@ -74,4 +94,32 @@ foreach ($check in $checks) {
 
     Write-Host ("[found]   " + $check.Name + " -> " + $cmd.Source)
     $output | Select-Object -First 1 | ForEach-Object { Write-Host ("          " + $_) }
+}
+
+try {
+    $word = New-Object -ComObject Word.Application
+    $version = $word.Version
+    $word.Quit()
+    Write-Host ("[found]   Microsoft Word COM")
+    Write-Host ("          version " + $version)
+}
+catch {
+    Write-Host "[missing] Microsoft Word COM"
+    Write-Host "          Word input mode requires Microsoft Word."
+}
+
+$acrobatCandidates = @(
+    "D:\Acrobat\Acrobat\Acrobat.exe",
+    "C:\Program Files\Adobe\Acrobat DC\Acrobat\Acrobat.exe",
+    "C:\Program Files\Adobe\Acrobat\Acrobat\Acrobat.exe",
+    "C:\Program Files (x86)\Adobe\Acrobat DC\Acrobat\Acrobat.exe"
+)
+$acrobat = @($acrobatCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1)
+if ($acrobat) {
+    Write-Host "[found]   Adobe Acrobat Pro executable"
+    Write-Host ("          " + $acrobat)
+}
+else {
+    Write-Host "[missing] Adobe Acrobat Pro executable"
+    Write-Host "          Acrobat OCR mode requires Adobe Acrobat Pro."
 }

@@ -46,11 +46,30 @@ function Add-ToolDirectory {
     }
 }
 
+function Add-MatchingToolDirectories {
+    param(
+        [string]$Root,
+        [string]$Pattern
+    )
+
+    if (-not (Test-Path -LiteralPath $Root)) {
+        return
+    }
+
+    Get-ChildItem -LiteralPath $Root -Recurse -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -like $Pattern } |
+        ForEach-Object { Add-ToolDirectory $_.FullName }
+}
+
 Add-ToolDirectory (Join-Path $PSScriptRoot "tools\poppler-26.02.0-0\poppler-26.02.0\Library\bin")
 Add-ToolDirectory (Join-Path $PSScriptRoot "tools\qpdf-12.3.2\qpdf-12.3.2-msvc64\bin")
 Add-ToolDirectory (Join-Path $PSScriptRoot "tools\ghostscript-10.07.1\bin")
 Add-ToolDirectory (Join-Path $PSScriptRoot "tools\Python312")
 Add-ToolDirectory (Join-Path $PSScriptRoot "tools\Python312\Scripts")
+Add-MatchingToolDirectories -Root (Join-Path $PSScriptRoot "tools") -Pattern "*\poppler-*\Library\bin"
+Add-MatchingToolDirectories -Root (Join-Path $PSScriptRoot "tools") -Pattern "*\qpdf-*\bin"
+Add-MatchingToolDirectories -Root (Join-Path $PSScriptRoot "tools") -Pattern "*\gs*\bin"
+Add-MatchingToolDirectories -Root (Join-Path $PSScriptRoot "tools") -Pattern "*\ghostscript*\bin"
 Add-ToolDirectory "D:\GPL\gs10.07.1\bin"
 $env:Path = [Environment]::GetEnvironmentVariable("Path", "User") + ";" +
     [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
