@@ -131,8 +131,15 @@ function Require-PythonImport {
         throw "Python was not found. $InstallHint"
     }
 
-    & $python -c "import $Module; print('ok')" *> $null
-    if ($LASTEXITCODE -ne 0) {
+    $oldPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $output = & $python -c "import $Module; print('ok')" 2>&1
+    $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = $oldPreference
+
+    if ($exitCode -ne 0) {
+        Write-Host ("PYTHON_IMPORT_FAILED " + $Module)
+        $output | Select-Object -First 5 | ForEach-Object { Write-Host ("          " + $_) }
         throw "$Module was not found. $InstallHint"
     }
 }

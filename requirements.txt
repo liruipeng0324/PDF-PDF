@@ -1,4 +1,5 @@
 pikepdf>=9.0
 img2pdf>=0.5.1
+pypdfium2>=4.30.0
 pywin32>=306; platform_system == "Windows"
 pywinauto>=0.6.8; platform_system == "Windows"

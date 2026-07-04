@@ -64,6 +64,7 @@ $checks = @(
     @{ Name = "qpdf"; Command = "qpdf"; Args = @("--version") },
     @{ Name = "Ghostscript"; Command = "gswin64c"; Args = @("--version") },
     @{ Name = "img2pdf"; Command = $pythonCommandForChecks; Args = @("-m", "img2pdf", "--version") },
+    @{ Name = "pypdfium2"; Command = $pythonCommandForChecks; Args = @("-c", "import pypdfium2; print(pypdfium2.__version__)") },
     @{ Name = "pikepdf"; Command = $pythonCommandForChecks; Args = @("-c", "import pikepdf; print(pikepdf.__version__)") },
     @{ Name = "pywin32"; Command = $pythonCommandForChecks; Args = @("-c", "import win32com.client; print('available')") },
     @{ Name = "pywinauto"; Command = $pythonCommandForChecks; Args = @("-c", "import pywinauto; print(pywinauto.__version__)") }
