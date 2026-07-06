@@ -519,7 +519,8 @@ function Convert-WithAcrobatDoubleLayer {
     param(
         [string]$SourcePdf,
         [string]$TargetPdf,
-        [string]$Language = "CHS"
+        [string]$Language = "CHS",
+        [int]$PageCount = 0
     )
 
     Write-Host "[4/5] Creating Acrobat searchable-image PDF..."
@@ -534,7 +535,13 @@ function Convert-WithAcrobatDoubleLayer {
         throw "Acrobat double-layer module was not found: $modulePath"
     }
 
-    & "$python" "$modulePath" --input "$SourcePdf" --output "$TargetPdf" --lang "$Language"
+    $timeoutSeconds = 1800
+    if ($PageCount -gt 0) {
+        $timeoutSeconds = [Math]::Max(1800, [Math]::Min(14400, $PageCount * 8))
+    }
+    Write-Host ("ACROBAT_OCR_WAIT_TIMEOUT_SECONDS {0}" -f $timeoutSeconds)
+
+    & "$python" "$modulePath" --input "$SourcePdf" --output "$TargetPdf" --lang "$Language" --timeout "$timeoutSeconds"
     if ($LASTEXITCODE -ne 0) {
         throw "Acrobat double-layer conversion failed with exit code: $LASTEXITCODE"
     }
@@ -679,7 +686,7 @@ try {
     $imagePages = @(Convert-PdfToPngPages -SourcePdf $taggedPdf -PagesDir $pagesDir -Resolution $Dpi -Engine $RenderEngine -Format $renderImageFormat -Quality $JpegQuality -Workers $RenderWorkers)
     Merge-PngPagesToPdf -ImageFiles $imagePages -SourcePdf $taggedPdf -TargetPdf $imagePdf -WorkDirectory $WorkDir
     if ($AcrobatDoubleLayer) {
-        Convert-WithAcrobatDoubleLayer -SourcePdf $imagePdf -TargetPdf $doubleLayerPdf -Language $AcrobatOcrLanguage
+        Convert-WithAcrobatDoubleLayer -SourcePdf $imagePdf -TargetPdf $doubleLayerPdf -Language $AcrobatOcrLanguage -PageCount $imagePages.Count
         Restore-Bookmarks -TaggedPdf $taggedPdf -TargetPdf $doubleLayerPdf -FinalPdf $finalPdf
     }
     else {

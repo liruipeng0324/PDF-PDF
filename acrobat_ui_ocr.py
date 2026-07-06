@@ -47,8 +47,7 @@ def _connect_window(timeout: int = 30):
             print(f"ACROBAT_UI_WINDOW_CANDIDATES {len(candidates)}")
             for candidate in candidates:
                 try:
-                    title = candidate.window_text() or ""
-                    print(f"ACROBAT_UI_WINDOW_CANDIDATE {title}")
+                    print(f"ACROBAT_UI_WINDOW_CANDIDATE {candidate.window_text() or ''}")
                 except Exception:
                     pass
 
@@ -75,24 +74,7 @@ def _connect_window(timeout: int = 30):
             return app, win
         except Exception as exc:
             last_error = exc
-            try:
-                windows = Desktop(backend="uia").windows(
-                    title_re=".*(Adobe Acrobat|Acrobat).*",
-                    visible_only=True,
-                    enabled_only=False,
-                )
-                pdf_windows = [w for w in windows if ".pdf" in (w.window_text() or "").lower()]
-                if not pdf_windows:
-                    raise AcrobatUiOcrError("No Acrobat PDF document window found.")
-                win = pdf_windows[0]
-                if hasattr(win, "wait"):
-                    win.wait("exists visible ready", timeout=3)
-                win.set_focus()
-                app = Application(backend="uia").connect(handle=win.handle)
-                return app, win
-            except Exception as desktop_exc:
-                last_error = desktop_exc
-                time.sleep(1)
+            time.sleep(1)
 
     raise AcrobatUiOcrError(f"Could not connect to Acrobat window: {last_error}")
 
@@ -119,14 +101,17 @@ def _maximize_window(win) -> None:
     time.sleep(2)
     try:
         rect = win.rectangle()
-        print(f"ACROBAT_WINDOW_RECT left={rect.left} top={rect.top} right={rect.right} bottom={rect.bottom} width={rect.width()} height={rect.height()}")
+        print(
+            "ACROBAT_WINDOW_RECT "
+            f"left={rect.left} top={rect.top} right={rect.right} bottom={rect.bottom} "
+            f"width={rect.width()} height={rect.height()}"
+        )
     except Exception as exc:
         print(f"ACROBAT_WINDOW_RECT_FAILED {exc}")
     _screenshot(win, "window_maximized.png")
 
 
 def _check_resolution(config: dict) -> None:
-    _, _, _, _ = _require_pywinauto()
     try:
         import ctypes
 
@@ -180,26 +165,31 @@ def _visible_text(win) -> str:
 
 
 def _recognize_button_still_visible(win) -> bool:
-    visible_text = _visible_text(win)
-    return "Recognize Text" in visible_text or "识别文本" in visible_text
+    return "Recognize Text" in _visible_text(win)
 
 
-def _wait_ocr_started(win, timeout: int = 20) -> bool:
-    deadline = time.time() + timeout
-    active_markers = (
+def _ocr_active_markers() -> tuple[str, ...]:
+    return (
         "Recognizing",
         "Performing page recognition",
         "Scanning and Text Recognition",
         "Cancel",
-        "正在识别",
-        "取消",
     )
+
+
+def _ocr_is_active(win) -> bool:
+    visible_text = _visible_text(win)
+    return any(marker in visible_text for marker in _ocr_active_markers())
+
+
+def _wait_ocr_started(win, timeout: int = 20) -> bool:
+    deadline = time.time() + timeout
     while time.time() < deadline:
-        visible_text = _visible_text(win)
-        if any(marker in visible_text for marker in active_markers):
+        if _ocr_is_active(win):
             print("ACROBAT_UI_OCR_STARTED True")
             return True
-        if not ("Recognize Text" in visible_text or "识别文本" in visible_text):
+        visible_text = _visible_text(win)
+        if "Recognize Text" not in visible_text:
             print("ACROBAT_UI_OCR_STARTED True button_disappeared")
             return True
         time.sleep(1)
@@ -209,24 +199,30 @@ def _wait_ocr_started(win, timeout: int = 20) -> bool:
 
 def _wait_ocr_complete(win, timeout: int = 300) -> bool:
     deadline = time.time() + timeout
-    active_markers = (
-        "Recognizing",
-        "Performing page recognition",
-        "Scanning and Text Recognition",
-        "Cancel",
-    )
+    started_at = time.time()
+    last_report = started_at
     stable_rounds = 0
+    saw_active = False
 
     while time.time() < deadline:
-        visible_text = _visible_text(win)
-        if any(marker in visible_text for marker in active_markers):
+        if _ocr_is_active(win):
+            saw_active = True
             stable_rounds = 0
         else:
             stable_rounds += 1
-            if stable_rounds >= 6:
+            required_stable_rounds = 6 if saw_active else 15
+            if stable_rounds >= required_stable_rounds:
+                print(f"ACROBAT_UI_OCR_COMPLETE detected elapsed={int(time.time() - started_at)}s")
                 return True
+        if time.time() - last_report >= 60:
+            print(
+                "ACROBAT_UI_OCR_WAITING "
+                f"elapsed={int(time.time() - started_at)}s timeout={timeout}s active_seen={saw_active}"
+            )
+            last_report = time.time()
         time.sleep(2)
 
+    print(f"ACROBAT_UI_OCR_WAIT_TIMEOUT elapsed={int(time.time() - started_at)}s timeout={timeout}s")
     return False
 
 
@@ -243,6 +239,13 @@ def run_ocr_by_ui(timeout: int = 300, print_tree: bool = False) -> bool:
     _check_resolution(config)
     if config.get("require_maximized"):
         _maximize_window(win)
+
+    if _ocr_is_active(win):
+        print("ACROBAT_UI_OCR_ALREADY_RUNNING wait_only")
+        if not _wait_ocr_complete(win, timeout=timeout):
+            raise AcrobatUiOcrError(f"Timed out waiting for Acrobat OCR to finish after {timeout} seconds")
+        print("ACROBAT_UI_OCR_DONE")
+        return True
 
     print("ACROBAT_UI_STEP scan_tool")
     _click_absolute(config["scan_tool"], "scan_tool")
