@@ -165,7 +165,8 @@ def _visible_text(win) -> str:
 
 
 def _recognize_button_still_visible(win) -> bool:
-    return "Recognize Text" in _visible_text(win)
+    visible_text = _visible_text(win)
+    return "Recognize Text" in visible_text or "\u8bc6\u522b\u6587\u672c" in visible_text
 
 
 def _ocr_active_markers() -> tuple[str, ...]:
@@ -174,6 +175,12 @@ def _ocr_active_markers() -> tuple[str, ...]:
         "Performing page recognition",
         "Scanning and Text Recognition",
         "Cancel",
+        "\u6b63\u5728\u8bc6\u522b",
+        "\u6b63\u5728\u6267\u884c\u9875\u9762\u8bc6\u522b",
+        "\u6b63\u5728\u626b\u63cf",
+        "\u5c06\u626b\u63cf\u7684\u9875\u9762\u8f6c\u6362\u4e3a\u53ef\u641c\u7d22\u7684\u56fe\u50cf",
+        "\u8bf7\u7a0d\u5019",
+        "\u53d6\u6d88",
     )
 
 
@@ -189,7 +196,7 @@ def _wait_ocr_started(win, timeout: int = 20) -> bool:
             print("ACROBAT_UI_OCR_STARTED True")
             return True
         visible_text = _visible_text(win)
-        if "Recognize Text" not in visible_text:
+        if "Recognize Text" not in visible_text and "\u8bc6\u522b\u6587\u672c" not in visible_text:
             print("ACROBAT_UI_OCR_STARTED True button_disappeared")
             return True
         time.sleep(1)
