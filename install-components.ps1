@@ -40,6 +40,35 @@ function Download-File {
     Invoke-WebRequest -Uri $Url -OutFile $TargetPath -UseBasicParsing
 }
 
+function Find-ToolExecutable {
+    param([string[]]$Names)
+
+    foreach ($name in $Names) {
+        $projectTool = Get-ChildItem -LiteralPath $toolsDir -Recurse -File -Filter $name -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if ($projectTool) {
+            return $projectTool.FullName
+        }
+
+        $command = Get-Command $name -ErrorAction SilentlyContinue
+        if ($command -and $command.Source -notlike "*\Microsoft\WindowsApps\*") {
+            return $command.Source
+        }
+    }
+
+    return ""
+}
+
+function Test-PythonModule {
+    param(
+        [string]$PythonExe,
+        [string]$Module
+    )
+
+    & $PythonExe -c "import $Module" *> $null
+    return $LASTEXITCODE -eq 0
+}
+
 function Get-GitHubReleaseAssetUrl {
     param(
         [string]$Repository,
@@ -110,19 +139,63 @@ function Install-PortablePython {
     return $pythonExe
 }
 
+function Install-PythonPackage {
+    param(
+        [string]$PythonExe,
+        [string]$Name,
+        [string]$Requirement,
+        [string]$Module
+    )
+
+    if (-not $Force -and (Test-PythonModule -PythonExe $PythonExe -Module $Module)) {
+        Write-Host ("[found] Python package " + $Name)
+        return
+    }
+
+    Write-Host ("[installing] Python package " + $Name)
+    & $PythonExe -m pip install $Requirement
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to install Python package '$Name'."
+    }
+}
+
 function Install-PythonPackages {
     param([string]$PythonExe)
 
     Write-Step "Install Python packages"
     & $PythonExe --version
-    & $PythonExe -m pip install --upgrade pip
-    & $PythonExe -m pip install -r (Join-Path $PSScriptRoot "requirements.txt")
-    & $PythonExe -m pip install img2pdf
+
+    $packages = @(
+        @{ Name = "pikepdf"; Requirement = "pikepdf>=9.0"; Module = "pikepdf" },
+        @{ Name = "img2pdf"; Requirement = "img2pdf>=0.5.1"; Module = "img2pdf" },
+        @{ Name = "pypdfium2"; Requirement = "pypdfium2>=4.30.0"; Module = "pypdfium2" },
+        @{ Name = "pywin32"; Requirement = "pywin32>=306"; Module = "win32com.client" },
+        @{ Name = "pywinauto"; Requirement = "pywinauto>=0.6.8"; Module = "pywinauto" }
+    )
+
+    $missingPackage = $false
+    foreach ($package in $packages) {
+        if (-not (Test-PythonModule -PythonExe $PythonExe -Module $package.Module)) {
+            $missingPackage = $true
+            break
+        }
+    }
+    if ($Force -or $missingPackage) {
+        & $PythonExe -m pip install --upgrade pip
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to upgrade pip."
+        }
+    }
+
+    foreach ($package in $packages) {
+        Install-PythonPackage -PythonExe $PythonExe -Name $package.Name -Requirement $package.Requirement -Module $package.Module
+    }
 }
 
 function Install-Qpdf {
-    if ((Get-ChildItem -LiteralPath $toolsDir -Recurse -File -Filter "qpdf.exe" -ErrorAction SilentlyContinue | Select-Object -First 1) -and -not $Force) {
-        Write-Host "qpdf already exists."
+    $existing = Find-ToolExecutable -Names @("qpdf.exe", "qpdf")
+    if ($existing -and -not $Force) {
+        Write-Host ("[found] qpdf: " + $existing)
         return
     }
     if ($SkipDownloads) {
@@ -138,8 +211,9 @@ function Install-Qpdf {
 }
 
 function Install-Poppler {
-    if ((Get-ChildItem -LiteralPath $toolsDir -Recurse -File -Filter "pdftoppm.exe" -ErrorAction SilentlyContinue | Select-Object -First 1) -and -not $Force) {
-        Write-Host "Poppler already exists."
+    $existing = Find-ToolExecutable -Names @("pdftoppm.exe", "pdftoppm")
+    if ($existing -and -not $Force) {
+        Write-Host ("[found] Poppler pdftoppm: " + $existing)
         return
     }
     if ($SkipDownloads) {
@@ -155,28 +229,30 @@ function Install-Poppler {
 }
 
 function Install-Ghostscript {
-    if ($SkipGhostscript) {
-        Write-Host "Ghostscript installation skipped."
+    $existing = Find-ToolExecutable -Names @("gswin64c.exe", "gswin64c")
+    if ($existing -and -not $Force) {
+        Write-Host ("[found] Ghostscript: " + $existing)
         return
     }
-    if ((Get-ChildItem -LiteralPath $toolsDir -Recurse -File -Filter "gswin64c.exe" -ErrorAction SilentlyContinue | Select-Object -First 1) -and -not $Force) {
-        Write-Host "Ghostscript already exists."
-        return
-    }
-    if ($SkipDownloads) {
-        Write-Host "Ghostscript missing, but -SkipDownloads was used."
+    if ($SkipGhostscript -or $SkipDownloads) {
+        Write-Host "[skipped] Ghostscript (optional; not installed)"
         return
     }
 
-    Ensure-Directory $downloadDir
-    $url = Get-GitHubReleaseAssetUrl -Repository "ArtifexSoftware/ghostpdl-downloads" -AssetLike "gs*w64.exe"
-    $installer = Join-Path $downloadDir ([IO.Path]::GetFileName(([Uri]$url).AbsolutePath))
-    $installDir = Join-Path $toolsDir "ghostscript"
-    Download-File -Url $url -TargetPath $installer
+    try {
+        Ensure-Directory $downloadDir
+        $url = Get-GitHubReleaseAssetUrl -Repository "ArtifexSoftware/ghostpdl-downloads" -AssetLike "gs*w64.exe"
+        $installer = Join-Path $downloadDir ([IO.Path]::GetFileName(([Uri]$url).AbsolutePath))
+        $installDir = Join-Path $toolsDir "ghostscript"
+        Download-File -Url $url -TargetPath $installer
 
-    Write-Host ("Installing Ghostscript to: " + $installDir)
-    Ensure-Directory $installDir
-    Start-Process -FilePath $installer -ArgumentList @("/S", "/D=$installDir") -Wait
+        Write-Host ("[installing] Ghostscript (optional) to: " + $installDir)
+        Ensure-Directory $installDir
+        Start-Process -FilePath $installer -ArgumentList @("/S", "/D=$installDir") -Wait
+    }
+    catch {
+        Write-Warning ("[skipped] Ghostscript (optional; installation failed): " + $_.Exception.Message)
+    }
 }
 
 function Test-DesktopApplications {
@@ -216,12 +292,10 @@ Write-Host ("Project: " + $PSScriptRoot)
 Write-Step "Install Python"
 $python = Install-PortablePython
 
-if (-not $SkipDownloads) {
-    Write-Step "Install PDF command line tools"
-    Install-Poppler
-    Install-Qpdf
-    Install-Ghostscript
-}
+Write-Step "Install PDF command line tools"
+Install-Poppler
+Install-Qpdf
+Install-Ghostscript
 
 Install-PythonPackages -PythonExe $python
 Test-DesktopApplications

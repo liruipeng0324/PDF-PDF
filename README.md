@@ -1,52 +1,54 @@
 # PDF-PDF 双层 PDF 制作工具
 
-这是一个本地 Web 工具，用于把 Word 文档或已导出的带书签 PDF 制作成可检索的双层 PDF。
+这是一个 Windows 本地 Web 工具，用来把 Word 文档或已导出的带书签 PDF 制作成可搜索、带书签的双层 PDF。
 
-当前主流程使用 Adobe Acrobat Pro 的“扫描和 OCR”桌面功能生成文字层，然后把原 PDF 书签恢复到最终文件。
+当前推荐流程使用 Adobe Acrobat Pro 的“扫描和 OCR”功能生成文字层，再把原始目录书签恢复到最终 PDF。
 
-详细安装和使用步骤请看：
+## 快速开始
 
-[使用说明.md](./使用说明.md)
-
-## 快速启动
-
-第一次从 GitHub 下载项目后，先双击：
+第一次从 GitHub 下载后，先双击：
 
 ```text
 一键安装组件.bat
 ```
 
-安装完成后再双击：
+安装完成后，双击启动：
 
 ```text
 start-web.bat
 ```
 
-## 日常启动
+浏览器打开后：
 
-双击：
-
-```text
-start-web.bat
-```
-
-打开网页后，选择输入文件或多文件队列，再选择输出目录，点击“开始制作”。
+1. 选择输入文件，默认是 Word 文档。
+2. 选择输出文件夹。
+3. 保持 300 DPI 和 Acrobat OCR 默认设置。
+4. 点击“开始制作”。
 
 ## 主要功能
 
-- 单个 Word / PDF 制作
-- 多文件队列制作
-- CSV 队列制作
-- Windows 原生文件选择
-- 300 DPI 图片渲染
-- Acrobat Pro 自动 OCR
-- 扫描完成后等待保存并验证文字层
-- 恢复原 PDF 书签
-- 输出日志和队列汇总
-- 缓存清理和依赖检测
+- Word 自动导出为带书签 PDF
+- 已导出的带书签 PDF 直接制作
+- 多文件队列处理
+- 300 DPI 图片化中间页
+- Adobe Acrobat Pro 自动 OCR
+- OCR 期间识别中文扫描状态，避免重复点击扫描
+- 扫描完成后自动保存、验证文字层、恢复书签
+- 输出日志、队列汇总、缓存清理
 
-## 注意
+## 必要组件
 
-直接处理 Word 文件需要安装 Microsoft Word。
+必须准备：
 
-生成双层 PDF 需要安装 Adobe Acrobat Pro，并保证 Acrobat 能正常打开“扫描和 OCR”。Reader 不支持本工具需要的 OCR 流程。
+- Microsoft Word：处理 Word 输入时需要
+- Adobe Acrobat Pro：用于“扫描和 OCR”，Reader 不支持
+- Python 3.12：一键安装脚本会安装到项目目录
+- Poppler / PDFium / img2pdf / pikepdf / qpdf / pywinauto：一键安装脚本会检查并只补装缺失项
+
+重复运行 `一键安装组件.bat` 不会重复下载或安装已满足的组件；只有显式运行 `install-components.ps1 -Force` 才会强制升级或重装。
+
+## 详细说明
+
+完整安装、使用、队列和常见问题请看：
+
+[使用说明.md](./使用说明.md)

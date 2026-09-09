@@ -282,7 +282,7 @@ function Convert-PdfToPngPages {
     Write-Host ("IMAGE_TOTAL_PAGES " + $pageCount)
 
     if ($Engine -eq "pdfium") {
-        Require-PythonImport "pypdfium2" "Install pypdfium2 with install-python-packages.ps1."
+        Require-PythonImport "pypdfium2" "Run 一键安装组件.bat to install missing components."
 
         $Workers = [Math]::Max(1, [Math]::Min($Workers, $pageCount))
         Write-Host ("IMAGE_ENGINE pdfium")
@@ -648,7 +648,7 @@ if ($finalFolder -and -not (Test-Path -LiteralPath $finalFolder)) {
 if ($RenderEngine -eq "poppler") {
     Require-Command "pdftoppm" "Install Poppler for Windows and add its bin folder to PATH."
 }
-Require-PythonModule "img2pdf" "Install img2pdf with install-python-packages.ps1."
+Require-PythonModule "img2pdf" "Run 一键安装组件.bat to install missing components."
 
 $baseName = [IO.Path]::GetFileNameWithoutExtension($sourceWord)
 if ($sourceTaggedPdf) {
