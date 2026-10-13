@@ -1,0 +1,378 @@
+{
+  "build": "20261013-offline-gs",
+  "releaseTag": "v2026.10.13-offline",
+  "baseUrl": "https://github.com/liruipeng0324/PDF-PDF/releases/download/v2026.10.13-offline/",
+  "packages": [
+    {
+      "profile": "full",
+      "file": "PDF-PDF-full.zip",
+      "size": 293921875,
+      "sha256": "33218d08c6916afcd7e1d732d2756a8f5564ffe198e1cf971cfb946c19d18dd5",
+      "parts": [
+        {
+          "file": "PDF-PDF-full.zip.part001",
+          "size": 8388608,
+          "sha256": "b5c2d94bc6ab7bb483d8f5605f164bf8d9d5e4b05abaa2aee209baffaa21adc5"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part002",
+          "size": 8388608,
+          "sha256": "3e38536f7974868783c4bcd8a7432e27a5284893c4ef79607cde9ce4f88b94cd"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part003",
+          "size": 8388608,
+          "sha256": "9554f8b67afb8c1a78cad05f6ce61ebb15bfe2525b3ebd90840c3b33d8625b61"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part004",
+          "size": 8388608,
+          "sha256": "93b45494e9bf5e7468a0c10281b7e79866932a21b3e0b0b5eaec98925ac87304"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part005",
+          "size": 8388608,
+          "sha256": "7bae94b90480a2367bb6b37111f905a1bbc2fbfca34596abdf01e522399983da"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part006",
+          "size": 8388608,
+          "sha256": "c7d7155781b5f3c5e67e8e36d7c10bd2fa79891df2d14225fb81696e85ad4e89"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part007",
+          "size": 8388608,
+          "sha256": "d452a63bd2f3eda948909d1081d5d49b067172bb7f14baeb9a2800865247c9b5"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part008",
+          "size": 8388608,
+          "sha256": "ddf2c9488c6078693b8465983c311f9c2a3bb940719e03f804d0335a6c218ba4"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part009",
+          "size": 8388608,
+          "sha256": "534a4c0df85fccc3b1b46d0ed5138b53cf664b95da195c8978345899b72a8110"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part010",
+          "size": 8388608,
+          "sha256": "848ae4581742491fa8d09dc17c36add1d0ab3a523d0e80910051179d0b15f2a5"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part011",
+          "size": 8388608,
+          "sha256": "d0a9b211c2a964b56cf81392249794e1791900706cb46b16581c36e63b3a7bee"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part012",
+          "size": 8388608,
+          "sha256": "fcf1ea02f51eddc923fe49b26af77679ea95ed9dd8ff341f9707c86f6b640c9c"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part013",
+          "size": 8388608,
+          "sha256": "3e897ef7272b9e0eede9ce03d93fce4abc1c87593c242b3e2d69cafad8d29577"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part014",
+          "size": 8388608,
+          "sha256": "0226b8d09f179e743ccac35a5253fc82aed3f7a1e88c089698542d01d28cfd3c"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part015",
+          "size": 8388608,
+          "sha256": "8daa78f1725040898f347ffd729e63ab198714394df331346ed4232a26775377"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part016",
+          "size": 8388608,
+          "sha256": "dc7581b4d98f3e5b7365d6bec5842eaa4c62f1aea825e01a3739d14df4d05fc4"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part017",
+          "size": 8388608,
+          "sha256": "cec26a4a0e40d09ff96a9e7d511209a0f2de9514cd2285ee4682c714a1c2feb6"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part018",
+          "size": 8388608,
+          "sha256": "c99d1feb11e569ed40fd13b156e123b9c9e67f0f7dd97d98700d240f1a1c7628"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part019",
+          "size": 8388608,
+          "sha256": "5896945d4ce70e240c9aceb07aa6d542348285de83d8b24985b41d7db1abb898"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part020",
+          "size": 8388608,
+          "sha256": "9456e2eb81adde68595b76c5684c36cc09b33df0af991913761444e141edafe8"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part021",
+          "size": 8388608,
+          "sha256": "0c183e40efe8f965529c6d1d260790399c79845cf63737ec864917987c8e6327"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part022",
+          "size": 8388608,
+          "sha256": "7a86e129a4c39d1e64a0d2b19a4e1c26de76d2f2cbafca117fa84c11e8402b16"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part023",
+          "size": 8388608,
+          "sha256": "bd80bd6a7721d2cc836667b43441255cf2998e0ce40f53a77e390945e8b37016"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part024",
+          "size": 8388608,
+          "sha256": "61e046b76655bea0141589d3d3c3fb924e609e6600c7a1b149167e5149411b95"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part025",
+          "size": 8388608,
+          "sha256": "0b53053b51c34868e81f64233c364dd89e3805b54adcd58ca751025bea9dcc35"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part026",
+          "size": 8388608,
+          "sha256": "1349c4c2c209cb1419357f454a8690c43e1ff4feb272eb36ecf3404ae31d689e"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part027",
+          "size": 8388608,
+          "sha256": "4acc3a613c655e99f79df6f514c909800ad30ccf89162b8eec811e4296de76b6"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part028",
+          "size": 8388608,
+          "sha256": "a670b06322e708e1cf27c90ba921bbdc4155650106b7c0feda3b3b52df17d9db"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part029",
+          "size": 8388608,
+          "sha256": "9d95b5ef09f09ec32c9ef20a9ee7a130da98158975abb0fd430833b0bdfb7b32"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part030",
+          "size": 8388608,
+          "sha256": "1c9609d2338681c4754f849cb87491c9a4ba45434110e8b6072e347c9bcb0e43"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part031",
+          "size": 8388608,
+          "sha256": "6308aba04c047a3de5007a05e4800992cb55172bed970765b927619fa4894b3b"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part032",
+          "size": 8388608,
+          "sha256": "47f32744f68fe6b9a0a36a09228cf7bb260ca5a75b01a3f5f83600d3f4b7774c"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part033",
+          "size": 8388608,
+          "sha256": "c23065d118489302dd6c108792cbcf28f960bd8b5b901f232d7ce7ae8e21d4ac"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part034",
+          "size": 8388608,
+          "sha256": "9f26193121e19a71146eb198488a8b6da21e4f229e6495e3520f8519e6d06f3c"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part035",
+          "size": 8388608,
+          "sha256": "010929503ba2193ebb69166d510bf4e6a4bda9f58acbcc2242adfa98df9f356d"
+        },
+        {
+          "file": "PDF-PDF-full.zip.part036",
+          "size": 320595,
+          "sha256": "a64c4da6ca4c45ad81b3354c1b5e70bb9a78ca148619256da9e7c039f56ff309"
+        }
+      ]
+    },
+    {
+      "profile": "manual-ocr",
+      "file": "PDF-PDF-manual-ocr.zip",
+      "size": 293578806,
+      "sha256": "604b0b8859a99f4ef231845d26118f73d943cd7653933e83d04557c85cfea89a",
+      "parts": [
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part001",
+          "size": 8388608,
+          "sha256": "ae0ae89580d4ff39e548d98d821c26fea8f54f216e5a02659b54d8536c4b03ca"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part002",
+          "size": 8388608,
+          "sha256": "9e1c5a6f0e6888ec7b54d28573cf52c431ad45849ab184feba68d8933e7e5263"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part003",
+          "size": 8388608,
+          "sha256": "95677440bb6600d080c806c6d68b647b8c3c2025852574bf8d358b55a97450d1"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part004",
+          "size": 8388608,
+          "sha256": "1f60e7f78076d0a257bd17329fec18ece7007ab94c9bfad4df51ae7f42c5c062"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part005",
+          "size": 8388608,
+          "sha256": "3f6ba2f5d3a9ac3888a3ee8b6fae141f67e05a1126328a257613371f59ecebd7"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part006",
+          "size": 8388608,
+          "sha256": "35c7630b2d05dda4d2eed7a69b10a3f859210da76ff808cbfb01ffbc104554d7"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part007",
+          "size": 8388608,
+          "sha256": "ddd3f39ffc61d748964f68c7496849da834f146500536fb803ef6b29e00608b9"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part008",
+          "size": 8388608,
+          "sha256": "a549cacee1460fb8d7d25e80863e96d139acea73d63266ed407db07b302e1fdd"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part009",
+          "size": 8388608,
+          "sha256": "c76a69a82001549067d886b954627f74f3614feeccfde6df2f287144c8d3bc27"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part010",
+          "size": 8388608,
+          "sha256": "7be066359ffde6b1e8ad9a4b852f8281b9b4f9510a22193268f498885343f4f2"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part011",
+          "size": 8388608,
+          "sha256": "a527de0d7f16503a1f3d751b027d61e369cd62d87245eb4caa0599a082bfaf67"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part012",
+          "size": 8388608,
+          "sha256": "077819213750cf05d7164b09ed9850fe9019f39c75d98ddf05d9e94027134405"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part013",
+          "size": 8388608,
+          "sha256": "400da66d99ac3f47d2bbb61d2c70787fadfa1f68fea46d1bd3696984b1db84e8"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part014",
+          "size": 8388608,
+          "sha256": "d0f033394b1ff12a7b8610e8dbeae776eec05aae54898a92926adf9558543662"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part015",
+          "size": 8388608,
+          "sha256": "75850eab250c5155591d19051d5331bf387bdf9b9066505d32f631232cef95cb"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part016",
+          "size": 8388608,
+          "sha256": "423f0730efb94b98977b809ab224e773914f95a5f2d439dcf02a7c5b7db913d6"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part017",
+          "size": 8388608,
+          "sha256": "0d1d24e9fd6dc6f74192aac6cde9c819e243b2dbcb3e3f2ec03d73bf363a405c"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part018",
+          "size": 8388608,
+          "sha256": "d1bdfb23c93a9b48fbe1a76954dcfbd1fcf2d558cbb4b379e7b2eebf3ff6579f"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part019",
+          "size": 8388608,
+          "sha256": "4e81002bca43a92f18377b3fac89d77038f6e614a6c7a28b3a6e9b4f33547b8e"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part020",
+          "size": 8388608,
+          "sha256": "36010aa572430c1d38bd88c9edd754ecf22e9b06dd64c3fc5627fc54fda5d363"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part021",
+          "size": 8388608,
+          "sha256": "2eff41ae30df8af17f72c9b90337d13781d9f0b07721f334afcb0a0d7729426f"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part022",
+          "size": 8388608,
+          "sha256": "1be3deb2b14e62232ca3e73ff92784ae99d5c2620c15aad3864f9f747b2896f9"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part023",
+          "size": 8388608,
+          "sha256": "7bf01022a2f2f0418650034f2726ae93a03db1834e4dce4014adb5fba56730a2"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part024",
+          "size": 8388608,
+          "sha256": "ad867bd0b597d50501d4302981b8e7f5bf0129ec0e12c59101fe8bd622bbc06e"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part025",
+          "size": 8388608,
+          "sha256": "f784e89fd43e26bc0a564cb9a3aa38184face9b9dcdf0a06460a242115a79815"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part026",
+          "size": 8388608,
+          "sha256": "671e417e4568727fb1128b6df45e7b8c7fa3e4be9a3beaffdf400deeaaf272d3"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part027",
+          "size": 8388608,
+          "sha256": "102bab1b3d72028e134166b1f55243a8b5351b7ee50da0169c65a554f1b007cb"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part028",
+          "size": 8388608,
+          "sha256": "018ce22917b3a2b5e622e956a084f8ea94aa3d9eff800576dc2052a8d6226e04"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part029",
+          "size": 8388608,
+          "sha256": "b0bef8924ae7aa5e0d5fc3d676b22b02c7445aa24077443399a2d3167bb893c0"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part030",
+          "size": 8388608,
+          "sha256": "8f25f361b221ca6b09e47a34c6a2f36747db76f9b4ce1520b1bb251f0c77cc76"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part031",
+          "size": 8388608,
+          "sha256": "6d85a4ef7a17036787eec0019eb1aea0b782a05300471e50b094cc7434a9d906"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part032",
+          "size": 8388608,
+          "sha256": "649516f54ec1d1a9d0780ea3a2f78214cd3f9b611e59bc1e8e1fe1f3d15a3521"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part033",
+          "size": 8388608,
+          "sha256": "239408b8c5093b3ec6531e97331ef2ad5a69bb5cfea9dc7540f6559a17bd9473"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part034",
+          "size": 8388608,
+          "sha256": "b50260db2503d677fd68e295b97fd2b308c036f17e212f7bf960fcdc809bb6f5"
+        },
+        {
+          "file": "PDF-PDF-manual-ocr.zip.part035",
+          "size": 8366134,
+          "sha256": "1c8dd02e27a898a1fa6eb6550a635ec36a7e57b0389a18833282a955a109a3fc"
+        }
+      ]
+    }
+  ]
+}

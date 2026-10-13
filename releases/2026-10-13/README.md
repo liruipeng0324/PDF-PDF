@@ -2,11 +2,18 @@
 
 适用于 Windows 10/11 x64。
 
-请从 [本次 Release](https://github.com/liruipeng0324/PDF-PDF/releases/tag/v2026.10.13-offline) 下载安装包附件：
+大文件直传在当前网络下被 GitHub 返回 408 超时，因此本次使用分片发布。
+请从 [本次 Release](https://github.com/liruipeng0324/PDF-PDF/releases/tag/v2026.10.13-offline)
+下载 Get-Packages.bat、Get-Packages.ps1、parts-manifest.json，放在同一目录，
+双击 Get-Packages.bat，选择手动版、完整版或两者。脚本会下载缺失分片并校验、合并到 packages 目录。
+失败后可再次运行，已校验的分片会跳过。合并后得到：
 - PDF-PDF-full.zip：完整版本，293,921,875 字节（280.3 MiB）。
 - PDF-PDF-manual-ocr.zip：手动 OCR 版本，293,578,806 字节（280.0 MiB）。
 
 GitHub 自动生成的 Source code ZIP/TAR 仅包含仓库源码，不包含离线运行组件，请勿将它当作安装包。
+如需离线合并，将所需的 .partNNN 附件放入脚本同目录的 parts 文件夹，
+执行 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Get-Packages.ps1 -Profile all -Offline。
+合并前逐片验证 SHA-256，合并后验证原 ZIP 的大小和 SHA-256。
 
 ## 修复内容
 
@@ -33,7 +40,7 @@ Word 与 Acrobat Pro 不随包分发。Word 输入需要 Microsoft Word。
 PDFium 渲染、Ghostscript 压缩、qpdf 优化及书签恢复。缺失组件与子检查失败会返回非零退出码。
 这不是全新主机/虚拟机验收；没有运行真实 Word 导出或 Acrobat GUI 自动 OCR。
 
-本次提交仅记录交付包发布说明、校验值和验收结果，未同步包内修复到项目源码。
+本次提交记录交付包发布说明、下载/合并工具、校验值和验收结果，未同步包内修复到项目源码。
 此前工作区已有的未提交源码改动保持原状。
 
 ## SHA-256
