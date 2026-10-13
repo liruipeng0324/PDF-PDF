@@ -1,0 +1,43 @@
+{
+  "build": "20261013-offline-gs",
+  "date": "2026-10-13",
+  "platform": "Windows 10/11 x64",
+  "packages": [
+    {
+      "profile": "full",
+      "bytes": 293921875,
+      "sha256": "33218d08c6916afcd7e1d732d2756a8f5564ffe198e1cf971cfb946c19d18dd5",
+      "entries": 13360,
+      "file": "PDF-PDF-full.zip",
+      "MiB": 280.3
+    },
+    {
+      "profile": "manual-ocr",
+      "bytes": 293578806,
+      "sha256": "604b0b8859a99f4ef231845d26118f73d943cd7653933e83d04557c85cfea89a",
+      "entries": 13313,
+      "file": "PDF-PDF-manual-ocr.zip",
+      "MiB": 280
+    }
+  ],
+  "ghostscriptVersion": "10.07.1",
+  "checks": {
+    "zipCrc": "PASS",
+    "offlineInstallWithDownloadsBlocked": "PASS",
+    "repeatedInstallNoReinstall": "PASS",
+    "chineseSpacesParenthesesPathStartup": "PASS",
+    "webGhostscriptDiscovery": "PASS",
+    "pdfiumRenderGhostscriptCompressionQpdfBookmarks": "PASS",
+    "missingGhostscriptInstallerExitCode": 1,
+    "missingCoreDependenciesExitCode": 1,
+    "setupPropagatedFailureExitCode": 23,
+    "sourceFileFingerprintCheck": {
+      "files": 35,
+      "changed": []
+    }
+  },
+  "limits": [
+    "No new Windows host or virtual machine was used; tests used relocated extraction and isolated dependency search.",
+    "Actual Word export and Acrobat GUI OCR were not exercised; full OCR still requires activated applications and matching ui_coords.json."
+  ]
+}
