@@ -1,5 +1,17 @@
 # PDF-PDF 双层 PDF 制作工具
 
+## 最新 EXE 交付版 v1.0.0
+
+**[下载完整交付包（约 176 MiB）](https://github.com/liruipeng0324/PDF-PDF/releases/download/v1.0.0/PDF-Tools-EXE-v1.0.0.zip)** · [版本说明与校验文件](https://github.com/liruipeng0324/PDF-PDF/releases/tag/v1.0.0) · [PDF 使用说明书](https://github.com/liruipeng0324/PDF-PDF/releases/download/v1.0.0/PDF-Tools-v1.0.0-Manual.pdf)
+
+完整解压到专用目录，双击 **PDF工具.exe**；无需安装 Python。支持 PDF、DOC、DOCX、跨目录追加文件及“生成在原目录”，包内附一键卸载。
+
+DOC/DOCX 输入需要已安装并激活的 Microsoft Word。**Acrobat OCR 尚未完成验收，请保持“Acrobat 双层PDF”不勾选；未执行 OCR 的输出没有可搜索文字层。**
+
+以下为仓库早期源码版说明。EXE 交付版请以本页上方的 Release 及随包说明书为准；GitHub 自动生成的 Source code 压缩包不含 EXE 运行组件。
+
+---
+
 这是一个 Windows 本地 Web 工具，用来把 Word 文档或已导出的带书签 PDF 制作成可搜索、带书签的双层 PDF。
 
 当前推荐流程使用 Adobe Acrobat Pro 的“扫描和 OCR”功能生成文字层，再把原始目录书签恢复到最终 PDF。
